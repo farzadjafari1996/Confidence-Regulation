@@ -1,6 +1,4 @@
-﻿"""Model configuration and definitions."""
-
-MODELS = [
+﻿MODELS = [
     #"Qwen/Qwen3.5-0.8B",
     #"Qwen/Qwen3.5-4B",
     #"Qwen/Qwen3.5-9B",

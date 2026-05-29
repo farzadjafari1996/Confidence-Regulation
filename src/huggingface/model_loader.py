@@ -1,26 +1,8 @@
-import os
 from pathlib import Path
 from typing import List, Tuple, Optional
 
 from huggingface_hub import snapshot_download
 from transformers import AutoModelForCausalLM, AutoTokenizer
-
-def setup_cache() -> Path:
-    """Configure HuggingFace to store files inside the project cache directory.
-
-    Returns the `Path` to the cache directory and sets `HF_HOME`.
-    """
-    project_root = Path(__file__).resolve().parent
-    cache_dir = project_root / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
-    os.environ["HF_HOME"] = str(cache_dir)
-    os.environ["HF_HUB_CACHE"] = str(cache_dir / "hub")
-    os.environ["TRANSFORMERS_CACHE"] = str(cache_dir / "transformers")
-    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-    return cache_dir
-
 
 def download_all_models(model_ids: List[str], cache_dir: Path) -> List[str]:
     """Download missing model snapshots into `cache_dir` and return available models.
