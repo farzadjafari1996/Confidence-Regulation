@@ -5,6 +5,8 @@ env/
 ENV/
 .venv-cuda/
 venv-cuda/
+.venv-cuda
+venvcuda/
 
 # Python
 __pycache__/
