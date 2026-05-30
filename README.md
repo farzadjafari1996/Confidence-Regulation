@@ -4,7 +4,7 @@ Research Implementation of Neuron Entropy for Trends in AI and LLMs
 ## Setup Instructions
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.12 recommended
 - pip (Python package manager)
 
 ### Installation
@@ -17,23 +17,24 @@ Research Implementation of Neuron Entropy for Trends in AI and LLMs
 
 2. **Create a virtual environment** (recommended)
    ```bash
-   python -m venv .venv
+   python -m venv .venv-cuda
    ```
 
 3. **Activate the virtual environment**
    - On Windows:
      ```bash
-     .venv\Scripts\Activate.ps1
+       .venv-cuda\Scripts\Activate.ps1
      ```
    - On macOS/Linux:
      ```bash
-     source .venv/bin/activate
+       source .venv-cuda/bin/activate
      ```
 
 4. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
+   `requirements.txt` is configured for CUDA (`cu128`) PyTorch.
 
 5. **Configure HuggingFace cache (optional)**
    To store HuggingFace models locally in this project instead of your home directory:
@@ -47,10 +48,11 @@ All project dependencies are listed in `requirements.txt` and include:
 - PyTorch (deep learning framework)
 - Transformers (HuggingFace models)
 - Accelerate (distributed training)
+- Datasets (dataset loading)
 - And other data science/ML libraries
 
 ## Usage
 Run the main script:
 ```bash
-python huggingfacetutorial.py
+python main.py
 ```

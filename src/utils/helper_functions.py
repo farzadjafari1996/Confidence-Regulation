@@ -1,54 +1,37 @@
-import torch
+from huggingface_hub import snapshot_download
 from pathlib import Path
-
-from src.huggingface.dataset_loader import download_dataset
-from src.huggingface.model_loader import load_model
 
 def download_resources(model_ids, dataset_ids, cache_dir):
     for model_id in model_ids:
-        try:
-            tokenizer, model = load_model(model_id, cache_dir)
-            output = run_model_smoke_test(model, tokenizer, model_id)
-            print(f"[ok] model working properly: {model_id} -> {output}")
-        except Exception:
-            print(f"[skip] model not working properly: {model_id}")
+        if not _is_model_downloaded(model_id, cache_dir):
+            print(f"model {model_id} was downloaded over net")
+            snapshot_download(
+                repo_id=model_id,
+                cache_dir=str(cache_dir),
+            )
+        else:
+            print(f"model {model_id} was cached")
+        
 
     for dataset_id in dataset_ids:
-        try:
-            dataset_path = download_dataset(dataset_id, cache_dir)
-            run_dataset_smoke_test(dataset_path, dataset_id)
-            print(f"[ok] dataset working properly: {dataset_id}")
-        except Exception:
-            print(f"[skip] dataset not working properly: {dataset_id}")
+        if not _is_dataset_downloaded(dataset_id, cache_dir):
+            print(f"dataset {dataset_id} was downloaded over net")
+            snapshot_download(
+                repo_id=dataset_id,
+                repo_type="dataset",
+                cache_dir=str(cache_dir),
+            )
+        else:
+            print(f"dataset {dataset_id} was cached")
 
 
-def run_model_smoke_test(model, tokenizer, name):
-    inputs = tokenizer("The capital of France is", return_tensors="pt")
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
-
-    with torch.no_grad():
-        out = model.generate(
-            **inputs,
-            max_new_tokens=2,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-
-    decoded = tokenizer.decode(
-        out[0],
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False,
-    )
-    return decoded
+def _is_model_downloaded(model_id, cache_dir):
+    model_cache_dir = Path(cache_dir) / f"models--{model_id.replace('/', '--')}"
+    snapshots_dir = model_cache_dir / "snapshots"
+    return snapshots_dir.is_dir() and any(p.is_dir() for p in snapshots_dir.iterdir())
 
 
-def run_dataset_smoke_test(dataset_path, name):
-    dataset_dir = Path(dataset_path)
-
-    if not dataset_dir.exists():
-        raise FileNotFoundError(f"Dataset cache path does not exist: {dataset_path}")
-
-    has_content = any(dataset_dir.rglob("*"))
-    if not has_content:
-        raise RuntimeError(f"Dataset cache is empty: {dataset_path}")
-
-    return True
+def _is_dataset_downloaded(dataset_id, cache_dir):
+    dataset_cache_dir = Path(cache_dir) / f"datasets--{dataset_id.replace('/', '--')}"
+    snapshots_dir = dataset_cache_dir / "snapshots"
+    return snapshots_dir.is_dir() and any(p.is_dir() for p in snapshots_dir.iterdir())

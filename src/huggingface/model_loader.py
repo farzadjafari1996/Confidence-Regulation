@@ -1,14 +1,11 @@
 from pathlib import Path
 from typing import List, Tuple, Optional
 
+import torch
 from huggingface_hub import snapshot_download
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 def download_all_models(model_ids: List[str], cache_dir: Path) -> List[str]:
-    """Download missing model snapshots into `cache_dir` and return available models.
-
-    Models that already have snapshots under `cache/models--<repo>` are skipped.
-    """
     downloaded_models: List[str] = []
     available_models: List[str] = []
     missing_models: List[str] = []
@@ -37,10 +34,6 @@ def download_all_models(model_ids: List[str], cache_dir: Path) -> List[str]:
 
 
 def load_model(model_id: str, cache_dir: Path) -> Tuple[AutoTokenizer, AutoModelForCausalLM]:
-    """Load a tokenizer and causal LM for `model_id` from `cache_dir` (or download it).
-
-    Returns a tuple `(tokenizer, model)`.
-    """
     model_cache_dir = Path(cache_dir) / f"models--{model_id.replace('/', '--')}"
     snapshots_dir = model_cache_dir / "snapshots"
     local_repo_path: Optional[str] = None
@@ -53,7 +46,6 @@ def load_model(model_id: str, cache_dir: Path) -> Tuple[AutoTokenizer, AutoModel
         )
         if latest_snapshot is not None:
             local_repo_path = str(latest_snapshot)
-            print(f"model loaded from cache : {model_id}")
 
     if local_repo_path is None:
         print(f"downloading the model : {model_id}")
@@ -95,5 +87,17 @@ def load_model(model_id: str, cache_dir: Path) -> Tuple[AutoTokenizer, AutoModel
             ) from exc
         raise
 
-    print(f"model loaded : {model_id}")
+    preferred_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    selected_device = preferred_device
+    try:
+        model = model.to(preferred_device)
+    except Exception as exc:
+        if preferred_device.type == "cuda":
+            print("[warn] CUDA move failed; falling back to CPU")
+            selected_device = torch.device("cpu")
+            model = model.to(selected_device)
+        else:
+            raise
+
+    print(f"model loaded : {model_id} ({selected_device})")
     return tokenizer, model
