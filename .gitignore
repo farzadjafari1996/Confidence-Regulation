@@ -3,6 +3,8 @@
 venv/
 env/
 ENV/
+.venv-cuda/
+venv-cuda/
 
 # Python
 __pycache__/
