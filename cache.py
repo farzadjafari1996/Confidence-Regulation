@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 def setup_cache() -> Path:
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parent
     cache_dir = project_root / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 

@@ -8,3 +8,8 @@
     #"meta-llama/Llama-3.2-3B",
     #"meta-llama/Llama-3.2-3B-Instruct",
 ]
+
+DATASETS = [
+    #"mandarjoshi/trivia_qa",
+    "facebook/lama",
+]
