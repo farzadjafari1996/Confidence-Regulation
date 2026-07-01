@@ -3,6 +3,10 @@
 .env
 .env.*
 
+# Project-local (not tracked)
+reference_code/
+.cursorrules
+
 # Python
 __pycache__/
 *.py[cod]
@@ -12,7 +16,6 @@ venv/
 .envrc
 
 # Experiment outputs
-reference_code/ablations/results/
 *.feather
 *.pkl
 
