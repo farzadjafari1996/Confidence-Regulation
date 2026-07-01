@@ -1,0 +1,31 @@
+# Secrets
+**/hf_token.txt
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.envrc
+
+# Experiment outputs
+reference_code/ablations/results/
+*.feather
+*.pkl
+
+# Models and caches
+.cache/
+transformers_cache/
+models/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
