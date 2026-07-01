@@ -16,17 +16,23 @@
 
 ---
 
+
+
 ## Constraints & Resources
 
-| Resource | Notes |
-|---|---|
-| **GPU (primary)** | RTX 4070 (~12 GB VRAM) — use `batch_size=1`, `chunk_size=20`, seq_len ≤ 256 |
-| **GPU (optional)** | H40/H100 — justify with a concrete batch (e.g. 7B base vs instruct comparison) |
-| **Team** | Solo |
-| **Code policy** | Small speed optimizations only; do not rewrite architecture |
-| **Future (out of scope for now)** | Semantic/epistemic uncertainty beyond token-level entropy |
+
+| Resource                          | Notes                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| **GPU (primary)**                 | RTX 4070 (~12 GB VRAM) — use `batch_size=1`, `chunk_size=20`, seq_len ≤ 256    |
+| **GPU (optional)**                | H40/H100 — justify with a concrete batch (e.g. 7B base vs instruct comparison) |
+| **Team**                          | Solo                                                                           |
+| **Code policy**                   | Small speed optimizations only; do not rewrite architecture                    |
+| **Future (out of scope for now)** | Semantic/epistemic uncertainty beyond token-level entropy                      |
+
 
 ---
+
+
 
 ## How to Use This Document
 
@@ -46,16 +52,20 @@ Mark each task: `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` skipped/d
 
 ---
 
+
+
 ## Model Registry
 
 Start with GPT-2 Small. Add models incrementally; verify TransformerLens + HuggingFace support before committing.
 
-| Priority | Model | Role | VRAM (approx.) | TransformerLens check |
-|---|---|---|---|---|
-| 0 | `gpt2-small` | Full reproduction anchor | Low | Supported |
-| 1 | `pythia-410m` | Token frequency neurons (§4) | Low | Supported |
-| 2 | *TBD @ Gate A* | First modern extension | Medium | Verify before use |
-| 3+ | *Add later* | Additional universality / comparisons | Varies | Verify before use |
+
+| Priority | Model          | Role                                  | VRAM (approx.) | TransformerLens check |
+| -------- | -------------- | ------------------------------------- | -------------- | --------------------- |
+| 0        | `gpt2-small`   | Full reproduction anchor              | Low            | Supported             |
+| 1        | `pythia-410m`  | Token frequency neurons (§4)          | Low            | Supported             |
+| 2        | *TBD @ Gate A* | First modern extension                | Medium         | Verify before use     |
+| 3+       | *Add later*    | Additional universality / comparisons | Varies         | Verify before use     |
+
 
 **Candidate pool (add/remove as needed):**
 
@@ -77,28 +87,36 @@ Record working names and `udark_start` values in the **Experiment Log** section 
 
 ---
 
+
+
 ## Track 1 — Entropy Neurons (Primary)
+
+
 
 ### 1A · Study · *Light–moderate*
 
-- [ ] Read paper §3.1–3.3 (identification, LN mediation, null space)
-- [ ] Read paper Fig 1–2 captions and Appendix C (LN folding)
-- [ ] Read `reference_code/plot_generation/fig1.py` (Norm vs LogitVar)
-- [ ] Read `get_potential_entropy_neurons_udark()` in `reference_code/utils.py`
-- [ ] Read `reference_code/ablations/run_and_store_ablation_results.py` (TE vs DE_LN)
+- [x] Read paper §3.1–3.3 (identification, LN mediation, null space)
+- [x] Read paper Fig 1–2 captions and Appendix C (LN folding)
+- [x] Read `reference_code/plot_generation/fig1.py` (Norm vs LogitVar)
+- [x] Read `get_potential_entropy_neurons_udark()` in `reference_code/utils.py`
+- [x] Read `reference_code/ablations/run_and_store_ablation_results.py` (TE vs DE_LN)
 
 **Done when:** You can explain LogitVar, ρ, TE, DE_LN, and why direct logit attribution misses the effect.
 
 ---
 
+
+
 ### 1B · Core Repro (GPT-2) · *Moderate–heavy*
 
-| Step | Paper ref | Script / function | Output artifact |
-|---|---|---|---|
-| B1 Static ID | Fig 2a | `plot_generation/fig1.py` | Scatter: `‖w_out‖` vs LogitVar; mark entropy neurons |
-| B2 Null space | Fig 2d–e | `get_potential_entropy_neurons_udark()` + custom ρ plot | ρ vs `1 − DE_LN/TE` or LN-mediated fraction |
-| B3 Ablation | Fig 2c, Fig 1 | `ablations/run_and_store_ablation_results.py` | TE vs DE for entropy vs random neurons |
-| B4 Confidence | Fig 1 | From ablation feather + `load_results.py` | \|ΔH\| vs prediction-change scatter |
+
+| Step          | Paper ref     | Script / function                                       | Output artifact                                      |
+| ------------- | ------------- | ------------------------------------------------------- | ---------------------------------------------------- |
+| B1 Static ID  | Fig 2a        | `plot_generation/fig1.py`                               | Scatter: `‖w_out‖` vs LogitVar; mark entropy neurons |
+| B2 Null space | Fig 2d–e      | `get_potential_entropy_neurons_udark()` + custom ρ plot | ρ vs `1 − DE_LN/TE` or LN-mediated fraction          |
+| B3 Ablation   | Fig 2c, Fig 1 | `ablations/run_and_store_ablation_results.py`           | TE vs DE for entropy vs random neurons               |
+| B4 Confidence | Fig 1         | From ablation feather + `load_results.py`               |                                                      |
+
 
 **GPT-2 entropy neurons (paper):** `11.584`, `11.2378`, `11.2870`, `11.2123`, `11.1611`, `11.2910`  
 **GPT-2 udark_start:** `-12` (bottom 12 singular vectors)
@@ -114,9 +132,11 @@ python run_and_store_ablation_results.py
 - Use `neuron_range` in config to sweep subsets (e.g. `0-512`) if full MLP is slow.
 - Store results under `ablations/results/`; visualize with `load_results.py`.
 
-**Done when:** Your plots qualitatively match paper claims (entropy neurons = high \|ΔH\|, low argmax change; TE ≫ DE_LN for entropy neurons, not for random).
+**Done when:** Your plots qualitatively match paper claims (entropy neurons = high ΔH, low argmax change; TE ≫ DE_LN for entropy neurons, not for random).
 
 ---
+
+
 
 ### 1C · Extension (Modern Model) · *Moderate*
 
@@ -132,7 +152,11 @@ Adjust per model:
 
 ---
 
+
+
 ## Track 2 — Induction Case Study (High Presentation Value)
+
+
 
 ### 2A · Study · *Light–moderate*
 
@@ -145,19 +169,25 @@ Adjust per model:
 
 ---
 
+
+
 ### 2B · Core Repro (GPT-2) · *Moderate*
 
-| Step | Paper ref | Script | Output |
-|---|---|---|---|
-| B1 Activations | Fig 5a | `case_studies/induction.py` | Avg entropy-neuron activation, entropy, loss vs position |
-| B2 Ablation | Fig 5b | Same script (clip/mean ablate section) | Post-ablation entropy ratio on 2nd half |
-| B3 BOS ablation | Fig 5c | `induction_with_bos_ablation.py` | Induction head ablation → entropy neuron activation drop |
+
+| Step            | Paper ref | Script                                 | Output                                                   |
+| --------------- | --------- | -------------------------------------- | -------------------------------------------------------- |
+| B1 Activations  | Fig 5a    | `case_studies/induction.py`            | Avg entropy-neuron activation, entropy, loss vs position |
+| B2 Ablation     | Fig 5b    | Same script (clip/mean ablate section) | Post-ablation entropy ratio on 2nd half                  |
+| B3 BOS ablation | Fig 5c    | `induction_with_bos_ablation.py`       | Induction head ablation → entropy neuron activation drop |
+
 
 **GPT-2 induction heads (paper):** L5H1, L5H5, L6H9
 
 **Done when:** Entropy increases on 2nd sequence half; ablating 11.2378 (or top neuron) sharply lowers entropy; BOS ablation of ≥1 induction head reduces entropy-neuron activation.
 
 ---
+
+
 
 ### 2C · Extension (Modern Model) · *Moderate*
 
@@ -166,42 +196,55 @@ Adjust per model:
 - Compare hedging magnitude and dominant entropy neuron(s).
 
 **Optional ( heavier ):**
+
 - [ ] `case_studies/natural_induction_true.py` — real C4 induction (Appendix H.1)
 
 **Done when:** One slide: “Induction hedging in [modern model] vs GPT-2.”
 
 ---
 
+
+
 ## Track 3 — Token Frequency Neurons (Optional / Secondary)
+
+
 
 ### 3A · Study · *Moderate*
 
 - [ ] Read paper §4, Appendix G
 - [ ] Read `run_and_store_unigram_results.py`, unigram helpers in `utils.py`
 
+
+
 ### 3B · Core Repro · *Heavy*
 
 Best on **Pythia-410M** (paper default; unigram `.npy` in repo).
 
-| Step | Paper ref | Script |
-|---|---|---|
-| Unigram + KL | Fig 3a | `generate_unigram_df` / pile counts |
-| Freq neurons | Fig 3b–c | `run_and_store_unigram_results.py` |
+
+| Step         | Paper ref | Script                              |
+| ------------ | --------- | ----------------------------------- |
+| Unigram + KL | Fig 3a    | `generate_unigram_df` / pile counts |
+| Freq neurons | Fig 3b–c  | `run_and_store_unigram_results.py`  |
+
 
 **Defer if:** Tracks 1–2 are not solid yet. Seminar can succeed without this track.
 
 ---
 
+
+
 ## Track 4 — Light Novelty (Choose at Gate B)
 
 Pick **one** after GPT-2 core repro + at least one modern-model extension teaser. All options are small incremental work; each opens a publishable lane.
 
-| Option | Seminar effort | What you add | Publish seed |
-|---|---|---|---|
-| **N1 Universality** | Low | ρ + TE/DE + induction on 1 modern model vs GPT-2 table | Scale to model zoo + scaling laws |
-| **N2 Base vs instruct** | Low–medium | Same metrics on Qwen/Llama/Mistral base **and** instruct pair | “Alignment rewires confidence regulation” |
-| **N3 Steering teaser** | Medium | Clip/patch entropy-neuron activations on 20–50 overconfident-wrong tokens | Inference-time calibration tool |
-| **N4 Mechanistic patch** | Medium | Activation patching induction head → entropy neuron (one path) | Full induction-confidence circuit paper |
+
+| Option                   | Seminar effort | What you add                                                              | Publish seed                              |
+| ------------------------ | -------------- | ------------------------------------------------------------------------- | ----------------------------------------- |
+| **N1 Universality**      | Low            | ρ + TE/DE + induction on 1 modern model vs GPT-2 table                    | Scale to model zoo + scaling laws         |
+| **N2 Base vs instruct**  | Low–medium     | Same metrics on Qwen/Llama/Mistral base **and** instruct pair             | “Alignment rewires confidence regulation” |
+| **N3 Steering teaser**   | Medium         | Clip/patch entropy-neuron activations on 20–50 overconfident-wrong tokens | Inference-time calibration tool           |
+| **N4 Mechanistic patch** | Medium         | Activation patching induction head → entropy neuron (one path)            | Full induction-confidence circuit paper   |
+
 
 **Recommendation:** If undecided, default to **N1** after first modern model; upgrade to **N2** if base/instruct pair loads cleanly on 4070.
 
@@ -212,6 +255,8 @@ Gate B decision: [ N1 | N2 | N3 | N4 ] — date: ______ — rationale: ______
 ```
 
 ---
+
+
 
 ## Track 5 — Future Depth (Post-Seminar / Publish Path)
 
@@ -225,6 +270,8 @@ Not required for course grade. Pursue if Gates A–B go well.
 
 ---
 
+
+
 ## Performance Tips (No Architecture Rewrite)
 
 - `torch.set_grad_enabled(False)` everywhere (already in scripts)
@@ -235,6 +282,8 @@ Not required for course grade. Pursue if Gates A–B go well.
 - Clear CUDA cache between heavy sequences: `torch.cuda.empty_cache()`
 
 ---
+
+
 
 ## Seminar Deliverables Checklist
 
@@ -249,6 +298,8 @@ Minimum viable presentation:
 
 ---
 
+
+
 ## Experiment Log
 
 *(Update as you go — model names, hyperparams, blockers)*
@@ -262,10 +313,12 @@ Date       | Model              | Task              | Result / notes
 
 ---
 
+
+
 ## References
 
 - Paper: `base_paper.pdf`
-- Code: `reference_code/` (upstream: https://github.com/bpwu1/confidence-regulation-neurons)
+- Code: `reference_code/` (upstream: [https://github.com/bpwu1/confidence-regulation-neurons](https://github.com/bpwu1/confidence-regulation-neurons))
 - Key deps: `transformer-lens`, `transformers`, Hydra — see `reference_code/requirements.txt` (consider bumping versions only if load breaks)
 
 ---
