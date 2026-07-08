@@ -36,9 +36,10 @@ from gpt2.core import (
     write_phase1_summary,
     write_phase2_summary,
 )
+from hyperparameters import LLAMA_HPARAMS
 from llama.wrapper import LlamaWrapper
 
-LLAMA_NULLSPACE_K = 20
+LLAMA_NULLSPACE_K = LLAMA_HPARAMS.nullspace_k
 
 
 def get_entropy(logits: torch.Tensor, use_log2: bool = False) -> torch.Tensor:
@@ -284,10 +285,7 @@ def run_phase2_ablation(
     *,
     device: str,
     load_model_fn=None,
-    n_random: int = 30,
-    seed: int = 42,
     paper_neurons: list[str] | None = None,
-    chunk_size: int = 20,
 ) -> pd.DataFrame:
     import time
 
@@ -295,7 +293,7 @@ def run_phase2_ablation(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     entropy_labels, static_df = load_phase1_outputs(phase1_dir)
-    neuron_names = select_phase2_neurons(static_df, entropy_labels, n_random=n_random, seed=seed)
+    neuron_names = select_phase2_neurons(static_df, entropy_labels, cfg)
 
     print(f"\n{'='*60}\nPhase 2 — {cfg.name} on {device}\n{'='*60}")
     print(f"  entropy neurons: {len(entropy_labels)}  random: {len(neuron_names) - len(entropy_labels)}")
@@ -307,10 +305,10 @@ def run_phase2_ablation(
         raise ValueError("load_model_fn is required for Llama phase 2")
     model, tokenizer = _load(cfg, device)
 
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+    torch.manual_seed(cfg.seed)
+    np.random.seed(cfg.seed)
 
-    tokenized = load_tokenized_data(tokenizer, cfg, seed=seed)
+    tokenized = load_tokenized_data(tokenizer, cfg)
     token_df = nutils.make_token_df(tokenized["tokens"], model=model)
     entropy_df = get_entropy_activation_df(
         neuron_names,
@@ -328,10 +326,14 @@ def run_phase2_ablation(
         entropy_df,
         neuron_names,
         device=device,
-        chunk_size=chunk_size,
+        chunk_size=cfg.chunk_size,
     )
     ablation_df = filter_entropy_activation_df(
-        raw, model_name=cfg.name, tokenizer=tokenizer, start_pos=3, end_pos=-1
+        raw,
+        model_name=cfg.name,
+        tokenizer=tokenizer,
+        start_pos=cfg.filter_start_pos,
+        end_pos=cfg.filter_end_pos,
     )
 
     feather_path = out_dir / "ablation.feather"

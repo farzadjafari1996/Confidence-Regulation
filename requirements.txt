@@ -40,5 +40,5 @@ ipython==8.12.3
 nbformat
 torchinfo==1.8.0
 
-neel @ git+https://github.com/neelnanda-io/neelutils.git
+pyyaml>=6.0.1
 neel_plotly @ git+https://github.com/neelnanda-io/neel-plotly.git

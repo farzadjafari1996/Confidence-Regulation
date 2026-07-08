@@ -10,7 +10,6 @@ import json
 import math
 import pathlib
 import random
-from dataclasses import dataclass
 
 import einops
 import numpy as np
@@ -26,48 +25,16 @@ from transformer_lens import utils as tl_utils
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REF = ROOT / "reference_code"
-DEFAULT_DATASET = "stas/c4-en-10k"
 PLOT_COLORS = {"Normal": "#636EFA", "Entropy": "#EF553B"}
 
-# GPT-2 paper ground truth (optional validation only)
-GPT2_PAPER_ENTROPY_NEURONS = [
-    "11.584", "11.2378", "11.2870", "11.2123", "11.1611", "11.2910",
-]
+from hyperparameters import (  # noqa: E402
+    DEFAULT_DATASET,
+    GPT2_PAPER_ENTROPY_NEURONS,
+    ModelRunConfig,
+    count_from_pct_and_n,
+)
 
 _SAVE_PNG = False
-
-
-@dataclass
-class ModelRunConfig:
-    name: str
-    entropy_top_pct: float = 0.01
-    udark_k: int | None = None  # null-space dim; default round(pct * d_model), GPT-2 paper uses 12
-    dataset: str = DEFAULT_DATASET
-    k: int = 10
-    data_end: int = 1000
-    batch_size: int = 1
-    dtype: str | None = None  # float16 | bfloat16 | float32 (modern stack)
-    skip: bool = False
-
-    @property
-    def slug(self) -> str:
-        return self.name.replace("/", "_").replace("\\", "_")
-
-    def output_dir(self, base: pathlib.Path) -> pathlib.Path:
-        return base / self.slug
-
-    def udark_start(self, d_model: int) -> int:
-        if self.udark_k is not None:
-            k = self.udark_k
-        else:
-            k = max(1, round(self.entropy_top_pct * d_model))
-        return -k
-
-    def nullspace_k(self, d_model: int) -> int:
-        return -self.udark_start(d_model)
-
-    def last_layer(self, model: HookedTransformer) -> int:
-        return model.cfg.n_layers - 1
 
 
 def resolve_tl_model_name(name: str) -> str:
@@ -121,15 +88,25 @@ def neuron_label(layer: int, idx: int) -> str:
     return f"{layer}.{idx}"
 
 
-def top1pct_rho_neurons(static_df: pd.DataFrame, pct: float = 0.01) -> list[str]:
-    """Top ceil(pct * n_neurons) last-layer neurons by rho (paper §3.3)."""
-    n = max(1, int(pct * len(static_df)))
+def top1pct_rho_neurons(
+    static_df: pd.DataFrame,
+    pct: float = 0.01,
+    *,
+    fixed_n: int | None = None,
+) -> list[str]:
+    """Top neurons by rho; count = min(pct * n, fixed_n) when fixed_n set (paper §3.3)."""
+    n = count_from_pct_and_n(len(static_df), pct, fixed_n)
     return static_df.nlargest(n, "rho")["component_name"].tolist()
 
 
-def annotate_top1pct_rho(static_df: pd.DataFrame, pct: float = 0.01) -> pd.DataFrame:
+def annotate_top1pct_rho(
+    static_df: pd.DataFrame,
+    pct: float = 0.01,
+    *,
+    fixed_n: int | None = None,
+) -> pd.DataFrame:
     df = static_df.copy()
-    selected = set(top1pct_rho_neurons(df, pct))
+    selected = set(top1pct_rho_neurons(df, pct, fixed_n=fixed_n))
     df["is_top1pct_rho"] = df["component_name"].isin(selected)
     return df
 
@@ -162,16 +139,14 @@ def compute_static_neuron_df(model: HookedTransformer, cfg: ModelRunConfig) -> p
 def select_phase2_neurons(
     static_df: pd.DataFrame,
     entropy_labels: list[str],
-    *,
-    n_random: int = 30,
-    seed: int = 42,
+    cfg: ModelRunConfig,
 ) -> list[str]:
     """Phase 2 ablation set: all entropy candidates + random controls."""
     static_df = normalize_component_names(static_df)
     names = set(entropy_labels)
     pool = static_df[~static_df["component_name"].isin(names)]
-    n_pick = min(n_random, len(pool))
-    names.update(pool.sample(n_pick, random_state=seed)["component_name"])
+    n_pick = cfg.random_control_count(len(pool))
+    names.update(pool.sample(n_pick, random_state=cfg.seed)["component_name"])
     return sorted(names, key=lambda x: int(x.split(".")[1]))
 
 
@@ -731,13 +706,13 @@ def _per_token_loss(
     return np.concatenate((loss, np.zeros((loss.shape[0], 1))), axis=1)
 
 
-def load_tokenized_data(tokenizer, cfg: ModelRunConfig, seed: int = 42):
+def load_tokenized_data(tokenizer, cfg: ModelRunConfig):
     data = load_dataset(cfg.dataset, split="train")
     subset = data.select(range(min(cfg.data_end, len(data))))
     tokenized = tl_utils.tokenize_and_concatenate(
-        subset, tokenizer, max_length=256, column_name="text"
+        subset, tokenizer, max_length=cfg.max_seq_length, column_name="text"
     )
-    return tokenized.shuffle(seed)
+    return tokenized.shuffle(cfg.seed)
 
 
 def _json_float(x):
@@ -760,9 +735,13 @@ def write_phase1_summary(
         "model": cfg.name,
         "phase": 1,
         "selection": {
-            "method": f"top_{cfg.entropy_top_pct:.0%}_rho",
+            "method": f"min({cfg.entropy_top_pct:.0%}, n={cfg.entropy_top_n}) rho",
+            "entropy_top_pct": cfg.entropy_top_pct,
+            "entropy_top_n": cfg.entropy_top_n,
+            "nullspace_top_pct": cfg.nullspace_top_pct,
+            "nullspace_k_fixed": cfg.udark_k,
+            "nullspace_k_effective": cfg.nullspace_k((model_meta or {}).get("d_model", 768)),
             "n_selected": len(selected),
-            "udark_k": cfg.nullspace_k((model_meta or {}).get("d_model", 768)),
             "neurons": selected,
         },
         "top10_rho": [
@@ -821,6 +800,8 @@ def run_phase1_identify(
         "d_vocab": model.cfg.d_vocab,
         "normalization": model.cfg.normalization_type,
         "udark_start": cfg.udark_start(model.cfg.d_model),
+        "nullspace_top_pct": cfg.nullspace_top_pct,
+        "nullspace_k_fixed": cfg.udark_k,
         "nullspace_k": cfg.nullspace_k(model.cfg.d_model),
     }
     print(
@@ -829,8 +810,12 @@ def run_phase1_identify(
     )
 
     static_df = compute_static_neuron_df(model, cfg)
-    static_df = annotate_top1pct_rho(static_df, cfg.entropy_top_pct)
-    selected = top1pct_rho_neurons(static_df, cfg.entropy_top_pct)
+    static_df = annotate_top1pct_rho(
+        static_df, cfg.entropy_top_pct, fixed_n=cfg.entropy_top_n
+    )
+    selected = top1pct_rho_neurons(
+        static_df, cfg.entropy_top_pct, fixed_n=cfg.entropy_top_n
+    )
 
     static_df.to_csv(out_dir / "static_neuron_metrics.csv", index=False)
     print(f"  saved {out_dir / 'static_neuron_metrics.csv'}")
@@ -838,7 +823,7 @@ def run_phase1_identify(
     top1_path = out_dir / "top1pct_rho_neurons.json"
     top1_payload = {
         "model": cfg.name,
-        "method": f"top_{cfg.entropy_top_pct:.0%}_rho",
+        "method": f"min({cfg.entropy_top_pct:.0%}, n={cfg.entropy_top_n}) rho",
         "n_selected": len(selected),
         "neurons": selected,
         "stats": static_df[static_df["is_top1pct_rho"]]
@@ -849,7 +834,9 @@ def run_phase1_identify(
     print(f"  saved {top1_path}")
 
     print("  Fig 2d: singular values + neuron alignment")
-    plot_fig2d_singular_values(model, static_df, selected, out_dir, cfg.name)
+    plot_fig2d_singular_values(
+        model, static_df, selected, out_dir, cfg.name, n_trace_neurons=cfg.n_trace_neurons
+    )
 
     print("  Fig 2d: ||w_out|| vs rho")
     plot_b2_rho(
@@ -898,7 +885,7 @@ def load_phase1_outputs(phase1_dir: pathlib.Path) -> tuple[list[str], pd.DataFra
     payload = json.loads(top1_path.read_text(encoding="utf-8"))
     static_df = normalize_component_names(pd.read_csv(static_path))
     if "is_top1pct_rho" not in static_df.columns:
-        static_df = annotate_top1pct_rho(static_df)
+        static_df = annotate_top1pct_rho(static_df, fixed_n=None)
     return payload["neurons"], static_df
 
 
@@ -938,8 +925,16 @@ def write_phase2_summary(
         "ablation_config": {
             "k_batches": cfg.k,
             "data_end": cfg.data_end,
+            "batch_size": cfg.batch_size,
+            "chunk_size": cfg.chunk_size,
+            "max_seq_length": cfg.max_seq_length,
+            "n_random": cfg.n_random,
+            "n_random_pct": cfg.n_random_pct,
+            "seed": cfg.seed,
+            "filter_start_pos": cfg.filter_start_pos,
+            "filter_end_pos": cfg.filter_end_pos,
             "n_entropy": len(entropy_labels),
-            "n_random": len(neuron_names) - len(entropy_labels),
+            "n_random_selected": len(neuron_names) - len(entropy_labels),
             "n_total": len(neuron_names),
         },
         "entropy_set": {
@@ -980,10 +975,7 @@ def run_phase2_ablation(
     *,
     device: str,
     load_model_fn=None,
-    n_random: int = 30,
-    seed: int = 42,
     paper_neurons: list[str] | None = None,
-    chunk_size: int = 20,
 ) -> pd.DataFrame:
     """Phase 2: mean ablation TE/DE on Phase 1 candidates + random controls."""
     import time
@@ -992,7 +984,7 @@ def run_phase2_ablation(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     entropy_labels, static_df = load_phase1_outputs(phase1_dir)
-    neuron_names = select_phase2_neurons(static_df, entropy_labels, n_random=n_random, seed=seed)
+    neuron_names = select_phase2_neurons(static_df, entropy_labels, cfg)
 
     print(f"\n{'='*60}\nPhase 2 — {cfg.name} on {device}\n{'='*60}")
     print(f"  entropy neurons: {len(entropy_labels)}  random: {len(neuron_names) - len(entropy_labels)}")
@@ -1003,10 +995,10 @@ def run_phase2_ablation(
     model, tokenizer = _load(cfg, device)
     model.set_use_attn_result(False)
 
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+    torch.manual_seed(cfg.seed)
+    np.random.seed(cfg.seed)
 
-    tokenized = load_tokenized_data(tokenizer, cfg, seed=seed)
+    tokenized = load_tokenized_data(tokenizer, cfg)
     token_df = nutils.make_token_df(tokenized["tokens"], model=model)
     entropy_df = get_entropy_activation_df(
         neuron_names,
@@ -1024,10 +1016,14 @@ def run_phase2_ablation(
         entropy_df,
         neuron_names,
         device=device,
-        chunk_size=chunk_size,
+        chunk_size=cfg.chunk_size,
     )
     ablation_df = filter_entropy_activation_df(
-        raw, model_name=cfg.name, tokenizer=tokenizer, start_pos=3, end_pos=-1
+        raw,
+        model_name=cfg.name,
+        tokenizer=tokenizer,
+        start_pos=cfg.filter_start_pos,
+        end_pos=cfg.filter_end_pos,
     )
 
     feather_path = out_dir / "ablation.feather"

@@ -1,0 +1,30 @@
+# Llama 3.2 family defaults (edit here instead of Python).
+# CLI flags override these values when explicitly passed.
+# Selection counts use min(percentage-derived, fixed number) when both are set.
+
+model: meta-llama/Llama-3.2-1B
+out_dir: outputs
+dtype: null
+
+entropy_top_pct: 0.01
+entropy_top_n: 10
+nullspace_top_pct: 0.01
+nullspace_k: 10
+
+dataset: stas/c4-en-10k
+data_end: 400
+max_seq_length: 256
+seed: 42
+
+k: 4
+batch_size: 1
+n_random: 90
+n_random_pct: null
+chunk_size: 20
+
+filter_start_pos: 3
+filter_end_pos: -1
+
+n_trace_neurons: 6
+box_plot_n_random: 10
+use_log2_entropy: false

@@ -233,26 +233,67 @@ Best on **Pythia-410M** (paper default; unigram `.npy` in repo).
 
 
 
-## Track 4 — Light Novelty (Choose at Gate B)
+## Track 4 — Gate B Novelty: Hallucination Forecasting from Entropy Neurons
 
-Pick **one** after GPT-2 core repro + at least one modern-model extension teaser. All options are small incremental work; each opens a publishable lane.
-
-
-| Option                   | Seminar effort | What you add                                                              | Publish seed                              |
-| ------------------------ | -------------- | ------------------------------------------------------------------------- | ----------------------------------------- |
-| **N1 Universality**      | Low            | ρ + TE/DE + induction on 1 modern model vs GPT-2 table                    | Scale to model zoo + scaling laws         |
-| **N2 Base vs instruct**  | Low–medium     | Same metrics on Qwen/Llama/Mistral base **and** instruct pair             | “Alignment rewires confidence regulation” |
-| **N3 Steering teaser**   | Medium         | Clip/patch entropy-neuron activations on 20–50 overconfident-wrong tokens | Inference-time calibration tool           |
-| **N4 Mechanistic patch** | Medium         | Activation patching induction head → entropy neuron (one path)            | Full induction-confidence circuit paper   |
+**Gate B decision:** Hallucination forecasting on factual QA using entropy-neuron behavior  
+Models: `gpt2-small`, `meta-llama/Llama-3.2-1B`, `meta-llama/Llama-3.2-1B-Instruct`  
+Data: **LAMA T-REx** + **TriviaQA**  
+Plan: **Phase 3a (observational)** → **Phase 3b (QA ablation, separate)** → **Phase 3c (light probe, optional)**
 
 
-**Recommendation:** If undecided, default to **N1** after first modern model; upgrade to **N2** if base/instruct pair loads cleanly on 4070.
+---
 
-Document choice here when made:
+### 4A · Phase 3a — Observational factual-QA study (run first)
 
-```text
-Gate B decision: [ N1 | N2 | N3 | N4 ] — date: ______ — rationale: ______
-```
+Run observational analyses on correct vs wrong generations and **per-token** activation/entropy traces.
+
+**Models / prompts**
+- GPT-2: simple fill-in / cloze prompts
+- Llama base: fill-in prompts
+- Llama Instruct: chat/instruction prompts (keep format consistent)
+
+**Datasets**
+- LAMA: **T-REx** subset first (templated cloze facts)
+- TriviaQA: free-form QA with official aliases + normalization
+
+**Decoding**
+- both `greedy` and `sampling`
+- token limits: LAMA ≤ 32 generated new tokens; TriviaQA ≤ 64–128 generated new tokens
+
+**Correct vs wrong labels**
+- T-REx (cloze): evaluate at the masked answer span with standard LAMA-style ranking (`@1`, `@5`, MRR)
+- TriviaQA (open): normalized EM + token-level F1
+
+**Hallucination bins (H1–H4; inspect all H)**
+- H1 wrong (gold/alias not supported)
+- H2 wrong and confident (low entropy / high top-1 prob at answer onset)
+- H3 wrong with a specific false entity (predicted entity differs from gold aliases)
+- H4 early warning: compare token-position features at `t` vs whether the wrong span starts within the next `k` tokens (default `k=3`)
+
+**Features to log**
+- full-sequence aggregates and per-token traces: entropy, entropy-neuron activations, and confidence proxies (top-1 prob/logit; optionally rank)
+
+**Sample size targets (start larger if runtime allows)**
+- T-REx: ~`3,000–5,000` probes per model
+- TriviaQA: ~`2,000` questions per model
+
+---
+
+### 4B · Phase 3b — QA ablation (separate; only after Phase 3a shows a signal)
+
+Mean-ablate Phase-1 entropy-neurons on QA prompts and measure how hallucination bins change (especially H2/H4).
+
+**Runtime guardrail:** keep ablation sample smaller than Phase 3a (e.g. `50–200` QA items).
+
+**Llama prerequisite:** validate the frozen RMSNorm ablation path used for `DE_LN` before trusting any Llama QA-ablation causal claims.
+
+---
+
+### 4C · Phase 3c — Lightweight hallucination detector (optional but recommended)
+
+Train a small classifier/probe using Phase 3a features to predict hallucination risk / early warning.
+
+Default: interpretable probe on entropy + top entropy-neuron activations + confidence (no heavy LoRA yet). The detector can trigger abstention/safer phrasing at inference time.
 
 ---
 
@@ -293,7 +334,9 @@ Minimum viable presentation:
 - [ ] GPT-2: Norm vs LogitVar + one TE/DE plot
 - [ ] GPT-2: Induction Fig 5a–b (or 5c)
 - [ ] ≥1 modern model: same analysis or explicit failure analysis
-- [ ] Gate B novelty: one hypothesis, one result, one limitation paragraph
+- [ ] Gate B novelty: Phase 3a observational QA (LAMA T-REx + TriviaQA) showing entropy + entropy-neuron differences across H1–H4 (early-warning focus)
+- [~] (Optional) Phase 3c detector results: probe accuracy / early-warning forecasting
+- [~] (Optional) Phase 3b ablation results after Phase 3a signal (for causal interpretation)
 - [ ] Future work slide pointing to Track 5
 
 ---
