@@ -136,17 +136,26 @@ def compute_static_neuron_df(model: HookedTransformer, cfg: ModelRunConfig) -> p
     )
 
 
+def select_random_control_neurons(
+    static_df: pd.DataFrame,
+    entropy_labels: list[str],
+    cfg: ModelRunConfig,
+) -> list[str]:
+    """Sample random final-layer neurons excluding entropy candidates (paper: 100 controls)."""
+    static_df = normalize_component_names(static_df)
+    pool = static_df[~static_df["component_name"].isin(entropy_labels)]
+    n_pick = cfg.random_control_count(len(pool))
+    return pool.sample(n_pick, random_state=cfg.seed)["component_name"].tolist()
+
+
 def select_phase2_neurons(
     static_df: pd.DataFrame,
     entropy_labels: list[str],
     cfg: ModelRunConfig,
 ) -> list[str]:
     """Phase 2 ablation set: all entropy candidates + random controls."""
-    static_df = normalize_component_names(static_df)
-    names = set(entropy_labels)
-    pool = static_df[~static_df["component_name"].isin(names)]
-    n_pick = cfg.random_control_count(len(pool))
-    names.update(pool.sample(n_pick, random_state=cfg.seed)["component_name"])
+    random_labels = select_random_control_neurons(static_df, entropy_labels, cfg)
+    names = set(entropy_labels) | set(random_labels)
     return sorted(names, key=lambda x: int(x.split(".")[1]))
 
 
@@ -292,6 +301,63 @@ def plot_fig2d_singular_values(
     _save_fig(fig, out_dir / "fig2d_singular_values")
 
 
+def _remove_te_de_outliers(
+    melted: pd.DataFrame,
+    *,
+    category_col: str = "label",
+    effect_col: str = "effect",
+    value_col: str = "abs_delta_loss",
+) -> pd.DataFrame:
+    """IQR outlier removal per category × effect (paper load_results.py Fig 2c)."""
+    kept: list[pd.DataFrame] = []
+    for (_, _), group in melted.groupby([category_col, effect_col], sort=False):
+        q1 = group[value_col].quantile(0.25)
+        q3 = group[value_col].quantile(0.75)
+        iqr = q3 - q1
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        kept.append(group[(group[value_col] >= lower) & (group[value_col] <= upper)])
+    if not kept:
+        return melted.iloc[0:0]
+    return pd.concat(kept, ignore_index=True)
+
+
+def _melt_te_de_boxplot_df(
+    df: pd.DataFrame,
+    entropy_labels: list[str],
+    random_labels: list[str] | None = None,
+    *,
+    label_col: str = "label",
+) -> pd.DataFrame:
+    """Token-level |Δloss| rows for TE vs DE_LN box plots (paper Fig 2c).
+
+    Entropy neurons appear individually; all random controls are pooled as "Random".
+    """
+    plot_df = df.copy()
+    if random_labels is not None:
+        keep = set(entropy_labels) | set(random_labels)
+        plot_df = plot_df[plot_df["component_name"].isin(keep)]
+    plot_df["abs_te"] = (plot_df["loss_post_ablation"] - plot_df["loss"]).abs()
+    plot_df["abs_de_ln"] = (plot_df["loss_post_ablation_with_frozen_ln"] - plot_df["loss"]).abs()
+    plot_df["is_entropy"] = plot_df["component_name"].isin(entropy_labels)
+    plot_df[label_col] = np.where(plot_df["is_entropy"], plot_df["component_name"], "Random")
+    melted = plot_df.melt(
+        id_vars=label_col,
+        value_vars=["abs_te", "abs_de_ln"],
+        var_name="effect",
+        value_name="abs_delta_loss",
+    )
+    melted["effect"] = melted["effect"].map({"abs_te": "Total", "abs_de_ln": "Direct"})
+    return melted
+
+
+def _fig2c_label_order(entropy_labels: list[str]) -> list[str]:
+    """Entropy neurons left-to-right, pooled random control last (paper Fig 2c)."""
+    ordered = sorted(entropy_labels, key=lambda x: int(x.split(".")[1]))
+    ordered.append("Random")
+    return ordered
+
+
 def plot_b2_rho_vs_ln_fraction(
     agg: pd.DataFrame,
     out_dir: pathlib.Path,
@@ -321,21 +387,15 @@ def plot_fig2c_te_de_box(
     out_dir: pathlib.Path,
     entropy_labels: list[str],
     model_title: str,
+    *,
+    random_labels: list[str] | None = None,
 ) -> None:
-    """Fig 2c: TE vs DE_LN — each entropy neuron + pooled random controls."""
-    df = final_df.copy()
-    df["abs_te"] = (df["loss_post_ablation"] - df["loss"]).abs()
-    df["abs_de_ln"] = (df["loss_post_ablation_with_frozen_ln"] - df["loss"]).abs()
-    df["is_entropy"] = df["component_name"].isin(entropy_labels)
-    df["label"] = np.where(df["is_entropy"], df["component_name"], "Random")
-
-    melted = df.melt(
-        id_vars="label",
-        value_vars=["abs_te", "abs_de_ln"],
-        var_name="effect",
-        value_name="abs_delta_loss",
-    )
-    melted["effect"] = melted["effect"].map({"abs_te": "Total", "abs_de_ln": "Direct"})
+    """Fig 2c: TE vs DE_LN — each entropy neuron + one pooled Random box (paper method)."""
+    melted = _melt_te_de_boxplot_df(final_df, entropy_labels, random_labels)
+    melted = _remove_te_de_outliers(melted)
+    label_order = _fig2c_label_order(entropy_labels)
+    melted["label"] = pd.Categorical(melted["label"], categories=label_order, ordered=True)
+    melted = melted.sort_values(["label", "effect"], ascending=[True, False])
 
     fig = px.box(
         melted,
@@ -343,11 +403,12 @@ def plot_fig2c_te_de_box(
         y="abs_delta_loss",
         color="effect",
         title=f"{model_title} — (c) Total & Direct Effects",
-        labels={"abs_delta_loss": "|Δ loss|", "label": "Neuron"},
+        labels={"abs_delta_loss": "|ΔLoss|", "label": "Neuron Name"},
         color_discrete_map={"Total": qualitative.Plotly[0], "Direct": qualitative.Plotly[2]},
         points=False,
+        category_orders={"label": label_order},
     )
-    n_ent = df.loc[df["is_entropy"], "component_name"].nunique()
+    n_ent = len(entropy_labels)
     if n_ent:
         fig.add_vline(x=n_ent - 0.5, line_dash="dash", line_color="black")
     width = max(700, 40 + n_ent * 22)
@@ -363,23 +424,16 @@ def plot_b3_te_de_box(
     n_random: int = 10,
 ) -> None:
     df = final_df.copy()
-    df["abs_te"] = (df["loss_post_ablation"] - df["loss"]).abs()
-    df["abs_de_ln"] = (df["loss_post_ablation_with_frozen_ln"] - df["loss"]).abs()
     df["is_entropy"] = df["component_name"].isin(entropy_labels)
 
     non_entropy = df.loc[~df["is_entropy"], "component_name"].unique().tolist()
     random_neurons = random.Random(42).sample(non_entropy, min(n_random, len(non_entropy)))
     keep = [n for n in entropy_labels if n in df["component_name"].values] + random_neurons
     filtered = df[df["component_name"].isin(keep)].copy()
-    filtered["label"] = np.where(filtered["is_entropy"], filtered["component_name"], "Random")
 
-    melted = filtered.melt(
-        id_vars="label",
-        value_vars=["abs_te", "abs_de_ln"],
-        var_name="effect",
-        value_name="abs_delta_loss",
-    )
-    melted["effect"] = melted["effect"].map({"abs_te": "Total", "abs_de_ln": "Direct"})
+    melted = _melt_te_de_boxplot_df(filtered, entropy_labels)
+    melted = _remove_te_de_outliers(melted)
+    melted = melted.sort_values(["label", "effect"], ascending=[True, False])
 
     fig = px.box(
         melted,
@@ -391,7 +445,7 @@ def plot_b3_te_de_box(
         color_discrete_map={"Total": qualitative.Plotly[0], "Direct": qualitative.Plotly[2]},
         points=False,
     )
-    n_ent = filtered["is_entropy"].nunique()
+    n_ent = melted.loc[melted["label"] != "Random", "label"].nunique()
     if n_ent:
         fig.add_vline(x=n_ent - 0.5, line_dash="dash", line_color="black")
     fig.update_layout(xaxis_tickangle=-45, width=700, height=400, title_font_size=16)
@@ -838,15 +892,6 @@ def run_phase1_identify(
         model, static_df, selected, out_dir, cfg.name, n_trace_neurons=cfg.n_trace_neurons
     )
 
-    print("  Fig 2d: ||w_out|| vs rho")
-    plot_b2_rho(
-        static_df,
-        out_dir,
-        cfg.name,
-        highlight_col="is_top1pct_rho",
-        filename="fig2d_rho_vs_norm",
-    )
-
     print("  Fig 2a: Norm vs LogitVar")
     plot_b1_norm_vs_logitvar(
         static_df,
@@ -984,10 +1029,14 @@ def run_phase2_ablation(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     entropy_labels, static_df = load_phase1_outputs(phase1_dir)
+    random_labels = select_random_control_neurons(static_df, entropy_labels, cfg)
     neuron_names = select_phase2_neurons(static_df, entropy_labels, cfg)
 
     print(f"\n{'='*60}\nPhase 2 — {cfg.name} on {device}\n{'='*60}")
-    print(f"  entropy neurons: {len(entropy_labels)}  random: {len(neuron_names) - len(entropy_labels)}")
+    print(
+        f"  entropy neurons: {len(entropy_labels)}  "
+        f"random controls: {len(random_labels)}  ablated: {len(neuron_names)}"
+    )
     print(f"  k={cfg.k} batches  data_end={cfg.data_end} sequences")
 
     t0 = time.perf_counter()
@@ -1031,7 +1080,9 @@ def run_phase2_ablation(
     print(f"  saved {feather_path}")
 
     print("  Fig 2c: TE vs DE_LN")
-    plot_fig2c_te_de_box(ablation_df, out_dir, entropy_labels, cfg.name)
+    plot_fig2c_te_de_box(
+        ablation_df, out_dir, entropy_labels, cfg.name, random_labels=random_labels
+    )
 
     agg = (
         ablation_df.assign(

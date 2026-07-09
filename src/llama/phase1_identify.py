@@ -9,7 +9,7 @@ Usage:
   python src/llama/phase1_identify.py --model meta-llama/Llama-3.2-1B-Instruct --device cuda
   python src/llama/phase1_identify.py --png
 
-Outputs: outputs/<model-slug>/phase1/
+Outputs: outputs/meta-llama_Llama-3.2-1B/phase1/
 """
 
 from __future__ import annotations

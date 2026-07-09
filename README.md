@@ -10,19 +10,32 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | `base_paper.pdf` | Local copy of the paper |
 | `reference_code/` | Upstream reference ([GitHub](https://github.com/bpwu1/confidence-regulation-neurons)) |
 | `src/gpt2/core.py` | GPT-2 metrics, plots, ablation engine |
-| `src/gpt2/load.py` | GPT-2 model loading |
-| `src/gpt2/phase1_identify.py` | Phase 1: static neuron identification |
-| `src/gpt2/phase2_ablation.py` | Phase 2: mean ablation (TE vs DE_LN) |
+| `src/gpt2/phase1_identify.py` | Phase 1: static identification (Fig 2a, 2d) |
+| `src/gpt2/phase2_ablation.py` | Phase 2: mean ablation (Fig 1, 2c, 2e) |
+| `src/gpt2/phase3_case_study.py` | Phase 3: neuron activity & induction (Fig 4–5) |
+| `src/gpt2/ext1_qa_ablation.py` | Ext 1: QA ablation on LAMA + TriviaQA |
 
 ## Quick start
 
-```bash
+```powershell
+# Windows — activate venv first (CUDA-enabled PyTorch lives here)
+.\.venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
 python src/gpt2/phase1_identify.py --device cuda
 python src/gpt2/phase2_ablation.py --device cuda
+python src/gpt2/phase3_case_study.py --device cuda
 ```
 
-Outputs: `outputs/gpt2-small/phase1/` then `outputs/gpt2-small/phase2/`
+Ext 1 QA ablation (after phase 1):
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src/qa/run_sanity_checks.py --model gpt2-small
+python src/gpt2/ext1_qa_ablation.py --device cuda --split sanity
+```
+
+Outputs: `outputs/gpt2-small/phase1/` → `phase2/` → `phase3/`; extension under `ext1/`
 
 For gated models, set `HF_TOKEN` or add `reference_code/ablations/hf_token.txt`.
 

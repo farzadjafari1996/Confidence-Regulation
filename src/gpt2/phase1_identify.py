@@ -10,12 +10,11 @@ Usage:
   python src/gpt2/phase1_identify.py --model gpt2-medium --device cuda
   python src/gpt2/phase1_identify.py --png
 
-Outputs: outputs/<model-slug>/phase1/
+Outputs: outputs/gpt2-small/phase1/
   static_neuron_metrics.csv
   top1pct_rho_neurons.json   ← input for phase2_ablation.py
-  fig2d_singular_values.html
-  fig2d_rho_vs_norm.html
   fig2a_norm_vs_logitvar.html
+  fig2d_singular_values.html
   summary.json
 """
 

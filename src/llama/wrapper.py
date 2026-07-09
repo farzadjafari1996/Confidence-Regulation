@@ -76,7 +76,10 @@ class LlamaWrapper:
         return (norm.weight.float() * x_normed).to(x.dtype)
 
     def apply_ln_final_frozen(self, x: torch.Tensor, ln_scales: torch.Tensor) -> torch.Tensor:
-        return x / ln_scales.unsqueeze(-1)
+        """Apply final RMSNorm with frozen per-token scales (rsqrt variance), not recomputed."""
+        norm = self.model.model.norm
+        x_normed = x.float() * ln_scales.unsqueeze(-1)
+        return (norm.weight.float() * x_normed).to(x.dtype)
 
     def to_str_tokens(self, tokens) -> list[str]:
         """Used by neel.utils.make_token_df."""

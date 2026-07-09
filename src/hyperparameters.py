@@ -92,6 +92,7 @@ GPT2_HPARAMS = Hyperparameters(
     nullspace_k=12,
     k=6,
     data_end=400,
+    n_random=100,
 )
 
 LLAMA_HPARAMS = Hyperparameters(
@@ -117,6 +118,15 @@ _FAMILY_DEFAULT_MODEL: dict[Family, str] = {
 
 def default_config_path(family: Family) -> pathlib.Path:
     return CONFIG_DIR / f"{family}.yaml"
+
+
+def model_slug(model_name: str) -> str:
+    return model_name.replace("/", "_").replace("\\", "_")
+
+
+def model_output_dir(model_name: str, base: pathlib.Path | None = None) -> pathlib.Path:
+    """Return outputs/<model-slug> (e.g. outputs/gpt2-small)."""
+    return (base or DEFAULT_OUTPUT_DIR) / model_slug(model_name)
 
 
 def hyperparameters_to_dict(hparams: Hyperparameters) -> dict[str, Any]:
@@ -222,7 +232,7 @@ class ModelRunConfig:
 
     @property
     def slug(self) -> str:
-        return self.name.replace("/", "_").replace("\\", "_")
+        return model_slug(self.name)
 
     def output_dir(self, base: pathlib.Path) -> pathlib.Path:
         return base / self.slug

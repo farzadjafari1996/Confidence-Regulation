@@ -2,7 +2,7 @@
 GPT-2 family — Phase 2: mean ablation (TE vs DE_LN).
 
 Requires Phase 1 outputs in outputs/<model-slug>/phase1/.
-Ablation set: all top-rho neurons + random controls.
+Ablation set: top-rho neurons (config) + n_random pooled controls for Fig 2c.
 
 Usage:
   python src/gpt2/phase2_ablation.py --device cuda
@@ -12,9 +12,9 @@ Usage:
 
 Outputs: outputs/<model-slug>/phase2/
   ablation.feather
+  fig1_entropy_vs_argmax.html
   fig2c_te_vs_de_ln.html
   fig2e_rho_vs_ln_fraction.html
-  fig1_entropy_vs_argmax.html
   rho_vs_ln_fraction.csv
   summary.json
 """
@@ -40,6 +40,7 @@ from gpt2.core import (  # noqa: E402
     plot_fig1_entropy_vs_argmax,
     plot_fig2c_te_de_box,
     run_phase2_ablation,
+    select_random_control_neurons,
     write_phase2_summary,
 )
 from hyperparameters import ModelRunConfig  # noqa: E402
@@ -66,9 +67,12 @@ def _plots_only(
         raise FileNotFoundError(f"No ablation at {feather}")
 
     entropy_labels, static_df = load_phase1_outputs(phase1_dir)
+    random_labels = select_random_control_neurons(static_df, entropy_labels, cfg)
     ablation_df = pd.read_feather(feather)
 
-    plot_fig2c_te_de_box(ablation_df, out_dir, entropy_labels, cfg.name)
+    plot_fig2c_te_de_box(
+        ablation_df, out_dir, entropy_labels, cfg.name, random_labels=random_labels
+    )
     agg = (
         ablation_df.assign(
             te=lambda d: (d["loss_post_ablation"] - d["loss"]).abs(),

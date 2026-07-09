@@ -1,30 +1,110 @@
-# GPT-2 family defaults (edit here instead of Python).
-# CLI flags override these values when explicitly passed.
-# Selection counts use min(percentage-derived, fixed number) when both are set.
-
-model: gpt2-small
-out_dir: outputs
-dtype: null
-
-entropy_top_pct: 0.01
-entropy_top_n: 10
-nullspace_top_pct: 0.01
-nullspace_k: 10
-
-dataset: stas/c4-en-10k
-data_end: 400
-max_seq_length: 256
-seed: 42
-
-k: 6
-batch_size: 1
-n_random: 90
-n_random_pct: null
-chunk_size: 20
-
-filter_start_pos: 3
-filter_end_pos: -1
-
-n_trace_neurons: 6
-box_plot_n_random: 10
-use_log2_entropy: false
+# GPT-2 — unified run config (Phase 1, 2, 3, ext1)
+# CLI flags override these values when explicitly passed.
+
+model: gpt2-small
+family: gpt2
+out_dir: outputs
+dtype: null
+
+# Phase 1 & 2 — neuron identification and C4 ablation
+hyperparameters:
+  entropy_top_pct: 0.01
+  entropy_top_n: 10
+  nullspace_top_pct: 0.01
+  nullspace_k: 10
+  dataset: stas/c4-en-10k
+  data_end: 400
+  max_seq_length: 256
+  seed: 42
+  k: 6
+  batch_size: 1
+  n_random: 100
+  n_random_pct: null
+  chunk_size: 20
+  filter_start_pos: 3
+  filter_end_pos: -1
+  n_trace_neurons: 6
+  box_plot_n_random: 10
+  use_log2_entropy: false
+
+phase3:
+  seed: 42
+  neuron_activity:
+    target_neuron: "11.2378"
+    k_batches: 10
+  induction:
+    num_sequences: 100
+    seq_length: 100
+    ablation_k: 50
+    bos_seq_length: 50
+    bos_num_examples: 100
+    bos_target_neuron: "11.2378"
+    trace_neurons:
+      - "11.584"
+      - "11.2378"
+      - "11.2870"
+      - "11.2123"
+      - "11.1611"
+      - "11.2910"
+    induction_heads:
+      - "L5H1"
+      - "L5H5"
+      - "L6H9"
+    joint_induction_heads:
+      - "L5H1-L5H5"
+      - "L5H1-L5H5-L6H9"
+    bos_baselines:
+      - "L6H1"
+      - "L5H7"
+      - "L5H6"
+      - "L5H8"
+      - "L6H10"
+      - "L6H3"
+
+ext1:
+  use_chat_template: false
+  data_dir: data/ext1
+  seed: 42
+  sample_sizes:
+    sanity: 20
+    main: 500
+  calibration:
+    dataset: stas/c4-en-10k
+    data_end: 200
+    max_seq_length: 256
+  ablation:
+    include_random_control: true
+    sanity_modes:
+      - mean_all_entropy
+      - per_neuron_avg
+    main_modes:
+      - mean_all_entropy
+    branches:
+      - te
+      - de_ln
+    chunk_size: 20
+  datasets:
+    lama:
+      hf_path: facebook/lama
+      config: trex
+      filter_single_token_gold: true
+      max_new_tokens: 32
+    triviaqa:
+      hf_path: mandarjoshi/trivia_qa
+      config: rc.nocontext
+      split: validation
+      max_new_tokens: 64
+      prompt_template: "Question: {question}\nAnswer:"
+  decoding:
+    modes:
+      - greedy
+      - sampling
+    greedy:
+      do_sample: false
+    sampling:
+      do_sample: true
+      temperature: 1.0
+      top_p: 1.0
+  runtime:
+    device: cuda
+    dtype: null
