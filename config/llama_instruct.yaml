@@ -11,7 +11,7 @@ hyperparameters:
   entropy_top_pct: 0.01
   entropy_top_n: 10
   nullspace_top_pct: 0.01
-  nullspace_k: 10
+  nullspace_k: 20
   dataset: stas/c4-en-10k
   data_end: 400
   max_seq_length: 256

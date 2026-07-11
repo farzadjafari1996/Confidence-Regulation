@@ -89,6 +89,8 @@ class Hyperparameters:
 
 # Paper-aligned presets (RTX 4070-friendly phase-2 defaults in data_end / k)
 GPT2_HPARAMS = Hyperparameters(
+    entropy_top_n=12,
+    nullspace_top_pct=0.016,
     nullspace_k=12,
     k=6,
     data_end=400,

@@ -35,6 +35,8 @@ from hyperparameters import (  # noqa: E402
 )
 
 _SAVE_PNG = False
+# Chunk size for logit_var matmul — avoids materializing (d_mlp × d_vocab) on GPU (Llama ~4 GB).
+_LOGIT_VAR_CHUNK = 512
 
 
 def resolve_tl_model_name(name: str) -> str:
@@ -111,21 +113,51 @@ def annotate_top1pct_rho(
     return df
 
 
-def compute_static_neuron_df(model: HookedTransformer, cfg: ModelRunConfig) -> pd.DataFrame:
+def _compute_logit_var_chunked(
+    w_out_normed: torch.Tensor,
+    w_u_colnorm: torch.Tensor,
+    *,
+    chunk_size: int = _LOGIT_VAR_CHUNK,
+) -> torch.Tensor:
+    """Per-neuron logit variance without allocating the full (d_mlp × d_vocab) matrix."""
+    n_neurons = w_out_normed.shape[0]
+    logit_var = torch.empty(n_neurons, dtype=torch.float32, device=w_out_normed.device)
+    for start in range(0, n_neurons, chunk_size):
+        end = min(start + chunk_size, n_neurons)
+        chunk = w_out_normed[start:end] @ w_u_colnorm
+        logit_var[start:end] = chunk.var(dim=1)
+        del chunk
+    return logit_var
+
+
+def _svd_w_u(w_u: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    u, singular_values, _ = torch.linalg.svd(w_u, full_matrices=False)
+    return u, singular_values
+
+
+def compute_static_neuron_df(
+    model: HookedTransformer, cfg: ModelRunConfig
+) -> tuple[pd.DataFrame, dict[str, torch.Tensor]]:
+    """Static norm / logit_var / rho metrics plus cached W_U SVD for Fig 2d."""
     layer = cfg.last_layer(model)
     # SVD / variance on float32 — half precision is unsupported on CUDA for svd.
     w_out = model.W_out[-1].float()
     w_u = model.W_U.float()
-    norm = w_out.norm(dim=1)
+    norm = w_out.norm(dim=1).clamp(min=1e-12)
 
-    normalized_comp = (w_out / norm.unsqueeze(1)) @ (w_u / w_u.norm(dim=0))
-    logit_var = normalized_comp.var(dim=1)
+    print("  static metrics: logit_var (chunked matmul)...", flush=True)
+    w_out_normed = w_out / norm.unsqueeze(1)
+    w_u_colnorm = w_u / w_u.norm(dim=0).clamp(min=1e-12)
+    logit_var = _compute_logit_var_chunked(w_out_normed, w_u_colnorm)
+    del w_out_normed, w_u_colnorm
 
-    u, _, _ = torch.linalg.svd(w_u, full_matrices=False)
-    u_dark = u[:, cfg.udark_start(model.cfg.d_model):]
+    print("  static metrics: SVD(W_U)...", flush=True)
+    u, singular_values = _svd_w_u(w_u)
+    u_dark = u[:, cfg.udark_start(model.cfg.d_model) :]
     rho = (w_out @ u_dark).norm(dim=-1) / norm
+    print("  static metrics: done", flush=True)
 
-    return pd.DataFrame(
+    df = pd.DataFrame(
         {
             "neuron_index": np.arange(model.cfg.d_mlp),
             "component_name": [neuron_label(layer, i) for i in range(model.cfg.d_mlp)],
@@ -134,6 +166,7 @@ def compute_static_neuron_df(model: HookedTransformer, cfg: ModelRunConfig) -> p
             "rho": rho.cpu().numpy(),
         }
     )
+    return df, {"u": u, "singular_values": singular_values}
 
 
 def select_random_control_neurons(
@@ -247,10 +280,14 @@ def plot_fig2d_singular_values(
     model_title: str,
     *,
     n_trace_neurons: int = 6,
+    w_u_svd: dict[str, torch.Tensor] | None = None,
 ) -> None:
     """Fig 2d: W_U singular values + |cos(w_out, u_j)| for top-rho neurons in the selected set."""
-    w_u = model.W_U.float()
-    u, singular_values, _ = torch.linalg.svd(w_u, full_matrices=False)
+    if w_u_svd is not None:
+        u = w_u_svd["u"]
+        singular_values = w_u_svd["singular_values"]
+    else:
+        u, singular_values = _svd_w_u(model.W_U.float())
     w_out = model.W_out[-1].float()
     indices = np.arange(len(singular_values))
 
@@ -863,7 +900,7 @@ def run_phase1_identify(
         f"d_model={meta['d_model']} norm={meta['normalization']} udark_start={meta['udark_start']}"
     )
 
-    static_df = compute_static_neuron_df(model, cfg)
+    static_df, w_u_svd = compute_static_neuron_df(model, cfg)
     static_df = annotate_top1pct_rho(
         static_df, cfg.entropy_top_pct, fixed_n=cfg.entropy_top_n
     )
@@ -889,7 +926,13 @@ def run_phase1_identify(
 
     print("  Fig 2d: singular values + neuron alignment")
     plot_fig2d_singular_values(
-        model, static_df, selected, out_dir, cfg.name, n_trace_neurons=cfg.n_trace_neurons
+        model,
+        static_df,
+        selected,
+        out_dir,
+        cfg.name,
+        n_trace_neurons=cfg.n_trace_neurons,
+        w_u_svd=w_u_svd,
     )
 
     print("  Fig 2a: Norm vs LogitVar")
