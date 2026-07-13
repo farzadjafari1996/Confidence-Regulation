@@ -12,16 +12,19 @@ from hyperparameters import (
     GPT2_HPARAMS,
     LLAMA_DEFAULT_MODEL,
     LLAMA_HPARAMS,
+    QWEN_DEFAULT_MODEL,
+    QWEN_HPARAMS,
     Hyperparameters,
     ModelRunConfig,
     load_run_settings,
 )
 
-Family = Literal["gpt2", "llama"]
+Family = Literal["gpt2", "llama", "qwen"]
 
 _FAMILY_DEFAULTS: dict[Family, tuple[Hyperparameters, str]] = {
     "gpt2": (GPT2_HPARAMS, GPT2_DEFAULT_MODEL),
     "llama": (LLAMA_HPARAMS, LLAMA_DEFAULT_MODEL),
+    "qwen": (QWEN_HPARAMS, QWEN_DEFAULT_MODEL),
 }
 
 
@@ -58,7 +61,7 @@ def add_phase1_cli(parser: argparse.ArgumentParser, family: Family) -> None:
         help="Fixed null-space k; effective k is min(nullspace_top_pct*d_model, k)",
     )
     parser.add_argument("--seed", type=int, default=None)
-    if family == "llama":
+    if family in ("llama", "qwen"):
         parser.add_argument(
             "--dtype",
             default=None,
@@ -93,7 +96,7 @@ def add_phase2_cli(parser: argparse.ArgumentParser, family: Family) -> None:
             default=None,
             help="Must match phase 1 if re-running static metrics",
         )
-    if family == "llama":
+    if family in ("llama", "qwen"):
         parser.add_argument(
             "--dtype",
             default=None,

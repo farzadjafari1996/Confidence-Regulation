@@ -34,6 +34,10 @@ DEFAULT_MODELS = [
     "gpt2-small",
     "meta-llama/Llama-3.2-1B",
     "meta-llama/Llama-3.2-1B-Instruct",
+    "Qwen/Qwen3.5-0.8B-Base",
+    "Qwen/Qwen3.5-0.8B",
+    "Qwen/Qwen3.5-2B-Base",
+    "Qwen/Qwen3.5-2B",
 ]
 
 DEFAULT_COMPARISON_DIR = DEFAULT_OUTPUT_DIR / "comparison"

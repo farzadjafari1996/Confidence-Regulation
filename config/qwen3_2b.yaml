@@ -1,0 +1,28 @@
+# Qwen 3.5 2B — unified run config (Phase 1, 2)
+# Use --model to switch base vs instruct checkpoint.
+# CLI flags override these values when explicitly passed.
+
+model: Qwen/Qwen3.5-2B-Base
+family: qwen
+out_dir: outputs
+dtype: null
+
+hyperparameters:
+  entropy_top_pct: 0.01
+  entropy_top_n: 10
+  nullspace_top_pct: 0.01
+  nullspace_k: 20
+  dataset: stas/c4-en-10k
+  data_end: 400
+  max_seq_length: 256
+  seed: 42
+  k: 4
+  batch_size: 1
+  n_random: 90
+  n_random_pct: null
+  chunk_size: 20
+  filter_start_pos: 3
+  filter_end_pos: -1
+  n_trace_neurons: 6
+  box_plot_n_random: 10
+  use_log2_entropy: false

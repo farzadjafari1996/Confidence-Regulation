@@ -9,8 +9,9 @@ import pandas as pd
 import torch
 
 from gpt2.load import load_gpt2
-from hyperparameters import GPT2_HPARAMS, LLAMA_HPARAMS, ModelRunConfig
+from hyperparameters import GPT2_HPARAMS, LLAMA_HPARAMS, ModelRunConfig, qwen_hparams_for_model
 from llama.load import load_llama
+from qwen.load import load_qwen
 from qa.plots import write_ext1_plots
 from qa.runner import run_model_dataset
 from qa.sanity_checks import run_all_sanity_checks
@@ -35,7 +36,12 @@ def add_ext1_cli(parser: argparse.ArgumentParser, default_config: pathlib.Path) 
 
 def _model_run_config(ext1_cfg: Ext1Config) -> ModelRunConfig:
     spec = ext1_cfg.model_spec()
-    base = GPT2_HPARAMS if spec.family == "gpt2" else LLAMA_HPARAMS
+    if spec.family == "gpt2":
+        base = GPT2_HPARAMS
+    elif spec.family == "qwen":
+        base = qwen_hparams_for_model(spec.model)
+    else:
+        base = LLAMA_HPARAMS
     return ModelRunConfig.from_hparams(spec.model, base, dtype=ext1_cfg.dtype)
 
 
@@ -45,6 +51,8 @@ def _load_model(ext1_cfg: Ext1Config, run_cfg: ModelRunConfig, device: str):
         model, tokenizer = load_gpt2(run_cfg, device)
         model.set_use_attn_result(False)
         return model, tokenizer
+    if spec.family == "qwen":
+        return load_qwen(run_cfg, device)
     return load_llama(run_cfg, device)
 
 

@@ -23,6 +23,7 @@ DEFAULT_DATASET = "stas/c4-en-10k"
 
 GPT2_DEFAULT_MODEL = "gpt2-small"
 LLAMA_DEFAULT_MODEL = "meta-llama/Llama-3.2-1B"
+QWEN_DEFAULT_MODEL = "Qwen/Qwen3.5-0.8B-Base"
 
 GPT2_PAPER_ENTROPY_NEURONS = [
     "11.584",
@@ -103,22 +104,47 @@ LLAMA_HPARAMS = Hyperparameters(
     data_end=400,
 )
 
+QWEN_08B_HPARAMS = Hyperparameters(
+    nullspace_k=10,
+    k=4,
+    data_end=400,
+)
+
+QWEN_2B_HPARAMS = Hyperparameters(
+    nullspace_k=20,
+    k=4,
+    data_end=400,
+)
+
+QWEN_HPARAMS = QWEN_08B_HPARAMS
+
 HP_FIELD_NAMES = {f.name for f in fields(Hyperparameters)}
 RUN_SETTING_KEYS = {"model", "dtype", "out_dir"}
-Family = Literal["gpt2", "llama"]
+Family = Literal["gpt2", "llama", "qwen"]
 
 _FAMILY_BASE: dict[Family, Hyperparameters] = {
     "gpt2": GPT2_HPARAMS,
     "llama": LLAMA_HPARAMS,
+    "qwen": QWEN_HPARAMS,
 }
 
 _FAMILY_DEFAULT_MODEL: dict[Family, str] = {
     "gpt2": GPT2_DEFAULT_MODEL,
     "llama": LLAMA_DEFAULT_MODEL,
+    "qwen": QWEN_DEFAULT_MODEL,
 }
 
 
+def qwen_hparams_for_model(model_name: str) -> Hyperparameters:
+    """Pick nullspace_k preset from checkpoint size (0.8B vs 2B)."""
+    if "2B" in model_name or "2b" in model_name:
+        return QWEN_2B_HPARAMS
+    return QWEN_08B_HPARAMS
+
+
 def default_config_path(family: Family) -> pathlib.Path:
+    if family == "qwen":
+        return CONFIG_DIR / "qwen3_0.8b.yaml"
     return CONFIG_DIR / f"{family}.yaml"
 
 

@@ -35,21 +35,27 @@ from hyperparameters import (  # noqa: E402
     load_run_settings,
 )
 from llama.load import load_llama  # noqa: E402
+from qwen.load import load_qwen  # noqa: E402
 
-Family = Literal["gpt2", "llama"]
+Family = Literal["gpt2", "llama", "qwen"]
 
 MODEL_REGISTRY: dict[str, tuple[Family, pathlib.Path | None]] = {
     "gpt2-small": ("gpt2", SRC.parent / "config" / "gpt2.yaml"),
     "meta-llama/Llama-3.2-1B": ("llama", SRC.parent / "config" / "llama.yaml"),
     "meta-llama/Llama-3.2-1B-Instruct": ("llama", SRC.parent / "config" / "llama_instruct.yaml"),
+    "Qwen/Qwen3.5-0.8B-Base": ("qwen", SRC.parent / "config" / "qwen3_0.8b.yaml"),
+    "Qwen/Qwen3.5-0.8B": ("qwen", SRC.parent / "config" / "qwen3_0.8b.yaml"),
+    "Qwen/Qwen3.5-2B-Base": ("qwen", SRC.parent / "config" / "qwen3_2b.yaml"),
+    "Qwen/Qwen3.5-2B": ("qwen", SRC.parent / "config" / "qwen3_2b.yaml"),
 }
 
 EXPECTED_NORM: dict[Family, set[str]] = {
     "gpt2": {"LN", "LNPre"},
     "llama": {"RMSPre"},
+    "qwen": {"RMSPre"},
 }
 
-REQUIRED_LLama_HOOK_SUFFIXES = ("hook_resid_post", "hook_post", "ln_final.hook_scale")
+REQUIRED_RMS_HOOK_SUFFIXES = ("hook_resid_post", "hook_post", "ln_final.hook_scale")
 
 
 @dataclass
@@ -179,7 +185,77 @@ def _forward_llama(cfg: ModelRunConfig, device: str, seq_len: int) -> SmokeResul
             result.errors,
             f"got {cfg.udark_start(d_model)} (expected -20 for d_model=2048, k=20)",
         )
-        for suffix in REQUIRED_LLama_HOOK_SUFFIXES:
+        for suffix in REQUIRED_RMS_HOOK_SUFFIXES:
+            _check(
+                f"hook_{suffix}",
+                any(k.endswith(suffix) or k == suffix for k in cache),
+                result.checks,
+                result.errors,
+                f"missing in {sorted(cache.keys())}",
+            )
+        if device.startswith("cuda"):
+            _check(
+                "vram_under_12gb",
+                torch.cuda.max_memory_allocated() / (1024**3) < 12.0,
+                result.checks,
+                result.errors,
+                f"{torch.cuda.max_memory_allocated() / (1024**3):.2f} GB peak",
+            )
+    except Exception as exc:
+        result.errors.append(f"exception: {exc}")
+        result.checks["forward_ok"] = False
+
+    result.passed = bool(result.checks) and all(result.checks.values()) and not result.errors
+    return result
+
+
+def _forward_qwen(cfg: ModelRunConfig, device: str, seq_len: int) -> SmokeResult:
+    result = SmokeResult(model=cfg.name, family="qwen", device=device, passed=False)
+    try:
+        model, tokenizer = load_qwen(cfg, device)
+        ids = tokenizer("Hello world", return_tensors="pt")["input_ids"][:, :seq_len].to(device)
+        logits, cache = model.run_with_cache(ids)
+        d_model = model.cfg.d_model
+        layer = model.cfg.n_layers - 1
+        expected_k = cfg.nullspace_k(d_model)
+
+        result.metrics = {
+            "logits_shape": tuple(logits.shape),
+            "n_layers": model.cfg.n_layers,
+            "d_mlp": model.cfg.d_mlp,
+            "d_model": d_model,
+            "d_vocab": model.cfg.d_vocab,
+            "normalization": model.cfg.normalization_type,
+            "udark_start": cfg.udark_start(d_model),
+            "nullspace_k": expected_k,
+            "cache_keys": sorted(cache.keys()),
+            "resid_post_key": tl_utils.get_act_name("resid_post", layer),
+            "post_key": tl_utils.get_act_name("post", layer),
+        }
+
+        _check("forward_ok", logits.ndim == 3, result.checks, result.errors)
+        _check(
+            "logits_shape",
+            logits.shape[0] == 1 and logits.shape[1] == ids.shape[1],
+            result.checks,
+            result.errors,
+            f"got {tuple(logits.shape)}",
+        )
+        _check(
+            "normalization",
+            model.cfg.normalization_type in EXPECTED_NORM["qwen"],
+            result.checks,
+            result.errors,
+            str(model.cfg.normalization_type),
+        )
+        _check(
+            "udark_start_1pct",
+            cfg.udark_start(d_model) == -expected_k,
+            result.checks,
+            result.errors,
+            f"got {cfg.udark_start(d_model)} (expected -{expected_k})",
+        )
+        for suffix in REQUIRED_RMS_HOOK_SUFFIXES:
             _check(
                 f"hook_{suffix}",
                 any(k.endswith(suffix) or k == suffix for k in cache),
@@ -206,6 +282,7 @@ def _forward_llama(cfg: ModelRunConfig, device: str, seq_len: int) -> SmokeResul
 _RUNNERS: dict[Family, Callable[[ModelRunConfig, str, int], SmokeResult]] = {
     "gpt2": _forward_gpt2,
     "llama": _forward_llama,
+    "qwen": _forward_qwen,
 }
 
 

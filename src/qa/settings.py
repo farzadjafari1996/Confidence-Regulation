@@ -13,7 +13,7 @@ AblationBranch = Literal["te", "de_ln"]
 DecodeMode = Literal["greedy", "sampling"]
 DatasetName = Literal["lama", "triviaqa"]
 SplitName = Literal["sanity", "main"]
-Family = Literal["gpt2", "llama"]
+Family = Literal["gpt2", "llama", "qwen"]
 
 
 @dataclass

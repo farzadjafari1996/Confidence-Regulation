@@ -18,8 +18,11 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 ## Quick start
 
 ```powershell
-# Windows — activate venv first (CUDA-enabled PyTorch lives here)
+# Windows — activate venv first
 .\.venv\Scripts\Activate.ps1
+
+# CUDA PyTorch (required before requirements.txt on Windows; cu121 index stops at 2.5.1)
+pip install "torch>=2.6.0,<2.7.0" --index-url https://download.pytorch.org/whl/cu124
 
 pip install -r requirements.txt
 python src/gpt2/phase1_identify.py --device cuda
