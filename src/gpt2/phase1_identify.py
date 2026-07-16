@@ -15,6 +15,8 @@ Outputs: outputs/gpt2-small/phase1/
   top1pct_rho_neurons.json   ← input for phase2_ablation.py
   fig2a_norm_vs_logitvar.html
   fig2d_singular_values.html
+  entropy_vs_random_unembed_alignment.html
+  entropy_vs_random_unembed_alignment_means.html  (when write_align_mode is both or means_only)
   summary.json
 """
 

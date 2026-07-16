@@ -59,7 +59,7 @@ class QwenWrapper:
     @property
     def W_U(self) -> torch.Tensor:
         if self._w_u is None:
-            self._w_u = self.model.lm_head.weight.T.float()
+            self._w_u = self.model.lm_head.weight.T.float().to(self.device).contiguous()
         return self._w_u
 
     @property
@@ -67,7 +67,7 @@ class QwenWrapper:
         if self._b_u is None:
             bias = self.model.lm_head.bias
             if bias is not None:
-                self._b_u = bias.float()
+                self._b_u = bias.float().to(self.device)
             else:
                 self._b_u = torch.zeros(self.cfg.d_vocab, dtype=torch.float32, device=self.device)
         return self._b_u
@@ -86,14 +86,24 @@ class QwenWrapper:
         x_normed = x.float() * ln_scales.unsqueeze(-1)
         return (norm.weight.float() * x_normed).to(x.dtype)
 
+    def _token_ids_to_str(self, ids) -> list[str]:
+        pad_id = self.tokenizer.pad_token_id
+        cleaned = []
+        for token_id in ids:
+            if token_id is None or (isinstance(token_id, float) and token_id != token_id):
+                cleaned.append(pad_id if pad_id is not None else 0)
+            else:
+                cleaned.append(int(token_id))
+        return self.tokenizer.convert_ids_to_tokens(cleaned)
+
     def to_str_tokens(self, tokens) -> list[str]:
         if isinstance(tokens, torch.Tensor):
             ids = tokens.tolist()
         else:
             ids = list(tokens)
         if ids and isinstance(ids[0], list):
-            return [self.tokenizer.convert_ids_to_tokens(row) for row in ids]
-        return self.tokenizer.convert_ids_to_tokens(ids)
+            return [self._token_ids_to_str(row) for row in ids]
+        return self._token_ids_to_str(ids)
 
     def loss_fn(self, logits: torch.Tensor, tokens: torch.Tensor, *, per_token: bool = True) -> torch.Tensor:
         shift_logits = logits[:, :-1, :].contiguous()

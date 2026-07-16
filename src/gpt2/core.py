@@ -26,6 +26,13 @@ from transformer_lens import utils as tl_utils
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REF = ROOT / "reference_code"
 PLOT_COLORS = {"Normal": "#636EFA", "Entropy": "#EF553B"}
+WRITE_ALIGN_COLORS = {
+    "entropy_individual": "#FCAE91",
+    "entropy_mean": "#B2182B",
+    "random_individual": "#BDD7E7",
+    "random_mean": "#2166AC",
+}
+WRITE_ALIGN_MODES = ("full", "means_only", "both")
 
 from hyperparameters import (  # noqa: E402
     DEFAULT_DATASET,
@@ -270,6 +277,150 @@ def plot_b2_rho(
     )
     fig.update_layout(width=500, height=400, title_font_size=16)
     _save_fig(fig, out_dir / filename)
+
+
+def _cosines_with_u(w_rows: torch.Tensor, u: torch.Tensor) -> np.ndarray:
+    """Per-neuron |cos(w_out, u_j)|; shape (n_neurons, n_singular_vectors)."""
+    norms = w_rows.norm(dim=-1).clamp(min=1e-12)
+    return ((w_rows @ u).abs() / norms.unsqueeze(-1)).cpu().numpy()
+
+
+def select_plot_random_neurons(
+    static_df: pd.DataFrame,
+    entropy_labels: list[str],
+    n_random: int,
+    seed: int,
+) -> list[str]:
+    """Sample non-entropy neurons for write-alignment comparison plots."""
+    pool = static_df[~static_df["component_name"].isin(entropy_labels)]
+    n_pick = min(n_random, len(pool))
+    return pool.sample(n_pick, random_state=seed)["component_name"].tolist()
+
+
+def plot_entropy_vs_random_unembed_alignment(
+    model: HookedTransformer,
+    static_df: pd.DataFrame,
+    entropy_labels: list[str],
+    out_dir: pathlib.Path,
+    model_title: str,
+    *,
+    n_random: int = 15,
+    seed: int = 42,
+    show_individual_neurons: bool = True,
+    w_u_svd: dict[str, torch.Tensor] | None = None,
+    filename: str = "entropy_vs_random_unembed_alignment",
+) -> None:
+    """W_U singular values + |cos(w_out, u_j)| for top-rho entropy vs random controls.
+
+    When show_individual_neurons is True, faint per-neuron traces use pale colors and
+    group means use distinct bold colors. When False, only the mean lines are drawn.
+    """
+    if w_u_svd is not None:
+        u = w_u_svd["u"]
+        singular_values = w_u_svd["singular_values"]
+    else:
+        u, singular_values = _svd_w_u(model.W_U.float())
+    w_out = model.W_out[-1].float()
+    indices = np.arange(len(singular_values))
+
+    entropy_df = static_df[static_df["component_name"].isin(entropy_labels)]
+    random_labels = select_plot_random_neurons(static_df, entropy_labels, n_random, seed)
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=indices,
+            y=singular_values.cpu().numpy(),
+            mode="lines",
+            name="Singular values",
+            line=dict(color="#B0B0B0", width=2.5),
+            yaxis="y",
+        )
+    )
+
+    entropy_cos = _cosines_with_u(w_out[entropy_df["neuron_index"].values], u)
+    if show_individual_neurons:
+        for cosines in entropy_cos:
+            fig.add_trace(
+                go.Scatter(
+                    x=indices,
+                    y=cosines,
+                    mode="lines",
+                    line=dict(color=WRITE_ALIGN_COLORS["entropy_individual"], width=1.0),
+                    opacity=0.55,
+                    showlegend=False,
+                    yaxis="y2",
+                )
+            )
+    fig.add_trace(
+        go.Scatter(
+            x=indices,
+            y=entropy_cos.mean(axis=0),
+            mode="lines",
+            name=f"Entropy mean (n={len(entropy_labels)})",
+            line=dict(color=WRITE_ALIGN_COLORS["entropy_mean"], width=2.8),
+            yaxis="y2",
+        )
+    )
+
+    random_df = static_df[static_df["component_name"].isin(random_labels)]
+    random_cos = _cosines_with_u(w_out[random_df["neuron_index"].values], u)
+    if show_individual_neurons:
+        for cosines in random_cos:
+            fig.add_trace(
+                go.Scatter(
+                    x=indices,
+                    y=cosines,
+                    mode="lines",
+                    line=dict(color=WRITE_ALIGN_COLORS["random_individual"], width=1.0),
+                    opacity=0.5,
+                    showlegend=False,
+                    yaxis="y2",
+                )
+            )
+    fig.add_trace(
+        go.Scatter(
+            x=indices,
+            y=random_cos.mean(axis=0),
+            mode="lines",
+            name=f"Random mean (n={len(random_labels)})",
+            line=dict(color=WRITE_ALIGN_COLORS["random_mean"], width=2.8, dash="dash"),
+            yaxis="y2",
+        )
+    )
+
+    mode_label = "all neurons" if show_individual_neurons else "means only"
+    fig.update_layout(
+        title=(
+            f"{model_title} — entropy vs random unembedding alignment "
+            f"({mode_label}, |cos(w<sub>out</sub>, u<sub>j</sub>)|)"
+        ),
+        xaxis=dict(title="Singular vector index"),
+        yaxis=dict(title="Singular value", type="log"),
+        yaxis2=dict(
+            title="|cos(w<sub>out</sub>, u<sub>j</sub>)|",
+            overlaying="y",
+            side="right",
+            range=[0, 1.05],
+        ),
+        width=700,
+        height=440,
+        title_font_size=16,
+        legend=dict(x=1.12, y=1),
+    )
+    _save_fig(fig, out_dir / filename)
+
+
+def _write_align_plot_jobs(mode: str) -> list[tuple[bool, str]]:
+    """Map write_align_mode to (show_individual_neurons, filename) jobs."""
+    if mode not in WRITE_ALIGN_MODES:
+        raise ValueError(f"write_align_mode must be one of {WRITE_ALIGN_MODES}, got {mode!r}")
+    jobs: list[tuple[bool, str]] = []
+    if mode in ("full", "both"):
+        jobs.append((True, "entropy_vs_random_unembed_alignment"))
+    if mode in ("means_only", "both"):
+        jobs.append((False, "entropy_vs_random_unembed_alignment_means"))
+    return jobs
 
 
 def plot_fig2d_singular_values(
@@ -667,8 +818,12 @@ def get_entropy_activation_df(
     token_df["pred_in_top1"] = token_df["correct_token_rank"] == 0
     token_df["pred_in_top5"] = token_df["correct_token_rank"] < 5
 
-    for neuron_name, chunks in neuron_activations.items():
-        token_df[f"{neuron_name}_activation"] = np.concatenate(chunks, axis=0).flatten()
+    act_cols = {
+        f"{neuron_name}_activation": np.concatenate(chunks, axis=0).flatten()
+        for neuron_name, chunks in neuron_activations.items()
+    }
+    if act_cols:
+        token_df = pd.concat([token_df, pd.DataFrame(act_cols)], axis=1)
 
     return token_df
 
@@ -797,13 +952,25 @@ def _per_token_loss(
     return np.concatenate((loss, np.zeros((loss.shape[0], 1))), axis=1)
 
 
-def load_tokenized_data(tokenizer, cfg: ModelRunConfig):
+def load_tokenized_data(tokenizer, cfg: ModelRunConfig, *, add_bos_token: bool = True):
     data = load_dataset(cfg.dataset, split="train")
     subset = data.select(range(min(cfg.data_end, len(data))))
     tokenized = tl_utils.tokenize_and_concatenate(
-        subset, tokenizer, max_length=cfg.max_seq_length, column_name="text"
+        subset,
+        tokenizer,
+        max_length=cfg.max_seq_length,
+        column_name="text",
+        add_bos_token=add_bos_token,
     )
     return tokenized.shuffle(cfg.seed)
+
+
+def tokenized_tokens_tensor(tokenized_data) -> torch.Tensor:
+    """Stack HF dataset token rows into a (batch, seq) tensor for neel.utils.make_token_df."""
+    tokens = tokenized_data["tokens"]
+    if isinstance(tokens, torch.Tensor):
+        return tokens
+    return torch.stack(list(tokens))
 
 
 def _json_float(x):
@@ -934,6 +1101,21 @@ def run_phase1_identify(
         n_trace_neurons=cfg.n_trace_neurons,
         w_u_svd=w_u_svd,
     )
+
+    print("  entropy vs random unembed alignment")
+    for show_individual, plot_filename in _write_align_plot_jobs(cfg.write_align_mode):
+        plot_entropy_vs_random_unembed_alignment(
+            model,
+            static_df,
+            selected,
+            out_dir,
+            cfg.name,
+            n_random=cfg.write_align_n_random,
+            seed=cfg.seed,
+            show_individual_neurons=show_individual,
+            w_u_svd=w_u_svd,
+            filename=plot_filename,
+        )
 
     print("  Fig 2a: Norm vs LogitVar")
     plot_b1_norm_vs_logitvar(
@@ -1091,7 +1273,7 @@ def run_phase2_ablation(
     np.random.seed(cfg.seed)
 
     tokenized = load_tokenized_data(tokenizer, cfg)
-    token_df = nutils.make_token_df(tokenized["tokens"], model=model)
+    token_df = nutils.make_token_df(tokenized_tokens_tensor(tokenized), model=model)
     entropy_df = get_entropy_activation_df(
         neuron_names,
         tokenized,

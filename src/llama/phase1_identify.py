@@ -10,6 +10,13 @@ Usage:
   python src/llama/phase1_identify.py --png
 
 Outputs: outputs/meta-llama_Llama-3.2-1B/phase1/
+  static_neuron_metrics.csv
+  top1pct_rho_neurons.json
+  fig2a_norm_vs_logitvar.html
+  fig2d_singular_values.html
+  entropy_vs_random_unembed_alignment.html
+  entropy_vs_random_unembed_alignment_means.html  (when write_align_mode is both or means_only)
+  summary.json
 """
 
 from __future__ import annotations

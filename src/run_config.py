@@ -68,6 +68,13 @@ def add_phase1_cli(parser: argparse.ArgumentParser, family: Family) -> None:
             help="float16 | bfloat16 | float32 (default: float16 on cuda, float32 on cpu)",
         )
     parser.add_argument("--png", action="store_true")
+    parser.add_argument("--write-align-n-random", type=int, default=None)
+    parser.add_argument(
+        "--write-align-mode",
+        choices=("full", "means_only", "both"),
+        default=None,
+        help="Unembed alignment plot: all neurons, means only, or both HTML files",
+    )
 
 
 def add_phase2_cli(parser: argparse.ArgumentParser, family: Family) -> None:
@@ -110,6 +117,28 @@ def add_phase2_cli(parser: argparse.ArgumentParser, family: Family) -> None:
     )
 
 
+def add_phase2b_cli(parser: argparse.ArgumentParser, family: Family) -> None:
+    add_phase2_cli(parser, family)
+    parser.add_argument(
+        "--branch",
+        choices=("te", "de_ln", "both"),
+        default="te",
+        help="Ablation branch for primary plots: TE (fresh LN), DE_LN (frozen LN), or both",
+    )
+    parser.add_argument(
+        "--softmax-top-k",
+        type=int,
+        default=50,
+        help="Top-k tokens stored for softmax overlay examples",
+    )
+    parser.add_argument(
+        "--n-example-tokens",
+        type=int,
+        default=5,
+        help="Example tokens captured per batch chunk (entropy + random panels)",
+    )
+
+
 def _cli_hparam_overrides(args: argparse.Namespace) -> dict[str, Any]:
     arg_to_cfg = {
         "entropy_top_pct": "entropy_top_pct",
@@ -129,6 +158,8 @@ def _cli_hparam_overrides(args: argparse.Namespace) -> dict[str, Any]:
         "filter_end_pos": "filter_end_pos",
         "n_trace_neurons": "n_trace_neurons",
         "box_plot_n_random": "box_plot_n_random",
+        "write_align_n_random": "write_align_n_random",
+        "write_align_mode": "write_align_mode",
         "use_log2_entropy": "use_log2_entropy",
     }
     overrides: dict[str, Any] = {}

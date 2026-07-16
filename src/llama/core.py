@@ -30,8 +30,10 @@ from gpt2.core import (
     plot_fig1_entropy_vs_argmax,
     plot_fig2c_te_de_box,
     plot_fig2d_singular_values,
+    plot_entropy_vs_random_unembed_alignment,
     run_phase1_identify as _gpt2_run_phase1_identify,
     select_phase2_neurons,
+    tokenized_tokens_tensor,
     top1pct_rho_neurons,
     write_phase1_summary,
     write_phase2_summary,
@@ -309,7 +311,7 @@ def run_phase2_ablation(
     np.random.seed(cfg.seed)
 
     tokenized = load_tokenized_data(tokenizer, cfg)
-    token_df = nutils.make_token_df(tokenized["tokens"], model=model)
+    token_df = nutils.make_token_df(tokenized_tokens_tensor(tokenized), model=model)
     entropy_df = get_entropy_activation_df(
         neuron_names,
         tokenized,
@@ -403,4 +405,5 @@ __all__ = [
     "plot_fig1_entropy_vs_argmax",
     "plot_fig2c_te_de_box",
     "plot_fig2d_singular_values",
+    "plot_entropy_vs_random_unembed_alignment",
 ]

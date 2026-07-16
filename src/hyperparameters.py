@@ -83,6 +83,8 @@ class Hyperparameters:
     # Plotting
     n_trace_neurons: int = 6
     box_plot_n_random: int = 10
+    write_align_n_random: int = 15  # entropy-vs-random unembed alignment plot (10–20 typical)
+    write_align_mode: str = "both"  # full | means_only | both
 
     # Metrics
     use_log2_entropy: bool = False
@@ -95,7 +97,7 @@ GPT2_HPARAMS = Hyperparameters(
     nullspace_k=12,
     k=6,
     data_end=400,
-    n_random=100,
+    n_random=90,
 )
 
 LLAMA_HPARAMS = Hyperparameters(
@@ -254,6 +256,8 @@ class ModelRunConfig:
     filter_end_pos: int = GPT2_HPARAMS.filter_end_pos
     n_trace_neurons: int = GPT2_HPARAMS.n_trace_neurons
     box_plot_n_random: int = GPT2_HPARAMS.box_plot_n_random
+    write_align_n_random: int = GPT2_HPARAMS.write_align_n_random
+    write_align_mode: str = GPT2_HPARAMS.write_align_mode
     use_log2_entropy: bool = GPT2_HPARAMS.use_log2_entropy
     dtype: str | None = None
     skip: bool = False

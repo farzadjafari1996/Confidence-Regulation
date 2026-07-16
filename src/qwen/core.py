@@ -9,7 +9,6 @@ from __future__ import annotations
 import math
 import pathlib
 
-import einops
 import numpy as np
 import pandas as pd
 import torch
@@ -21,7 +20,7 @@ from gpt2.core import (
     annotate_top1pct_rho,
     compute_static_neuron_df,
     load_phase1_outputs,
-    load_tokenized_data,
+    load_tokenized_data as _load_tokenized_data_gpt2,
     neuron_label,
     normalize_component_names,
     plot_b1_norm_vs_logitvar,
@@ -32,6 +31,7 @@ from gpt2.core import (
     plot_fig2d_singular_values,
     run_phase1_identify as _gpt2_run_phase1_identify,
     select_phase2_neurons,
+    tokenized_tokens_tensor,
     top1pct_rho_neurons,
     write_phase1_summary,
     write_phase2_summary,
@@ -42,11 +42,54 @@ from qwen.wrapper import QwenWrapper
 QWEN_NULLSPACE_K = QWEN_HPARAMS.nullspace_k
 
 
+def load_tokenized_data(tokenizer, cfg: ModelRunConfig):
+    """Qwen tokenizers have no BOS; skip prepend to avoid NaN rows from tokenize_and_concatenate."""
+    return _load_tokenized_data_gpt2(tokenizer, cfg, add_bos_token=False)
+
+
 def get_entropy(logits: torch.Tensor, use_log2: bool = False) -> torch.Tensor:
-    entropy = logits.softmax(dim=-1) * logits.log_softmax(dim=-1)
+    log_probs = logits.float().log_softmax(dim=-1)
+    entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
     if use_log2:
-        entropy = entropy / torch.log(torch.tensor(2.0, device=logits.device))
-    return -einops.einsum(entropy, "batch seq d_vocab -> batch seq")
+        entropy = entropy / math.log(2.0)
+    return entropy
+
+
+def _rank_of_correct_token(logits: torch.Tensor, tokens: torch.Tensor) -> np.ndarray:
+    """Rank of the correct next token without full-vocab argsort."""
+    correct_logits = logits[:, :-1].gather(-1, tokens[:, 1:].unsqueeze(-1))
+    rank = (logits[:, :-1] >= correct_logits).sum(dim=-1) - 1
+    rank = torch.cat(
+        [rank, torch.zeros(rank.shape[0], 1, device=rank.device, dtype=rank.dtype)],
+        dim=1,
+    )
+    return rank.cpu().numpy()
+
+
+def _per_token_metrics(
+    logits: torch.Tensor,
+    tokens: torch.Tensor,
+    *,
+    use_log2: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Loss, entropy, and argmax from a single log_softmax pass."""
+    log_probs = logits.float().log_softmax(dim=-1)
+    entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
+    if use_log2:
+        entropy = entropy / math.log(2.0)
+
+    loss = -log_probs[:, :-1].gather(-1, tokens[:, 1:].unsqueeze(-1)).squeeze(-1)
+    loss = torch.nn.functional.pad(loss, (0, 1))
+    top = logits.argmax(dim=-1)
+    return loss, entropy, top
+
+
+def _project_to_logits(model: QwenWrapper, resid: torch.Tensor) -> torch.Tensor:
+    """Project resid to logits; fp16 matmul on CUDA avoids ~60s/chunk with Qwen's 248k vocab."""
+    if resid.is_cuda:
+        resid_h = resid.half()
+        return resid_h @ model.W_U.half() + model.b_U.half()
+    return resid.float() @ model.W_U + model.b_U
 
 
 def neuron_str_to_neuron(neuron_str: str) -> tuple[int, int]:
@@ -127,17 +170,7 @@ def get_entropy_activation_df(
         preds.append(logits.argmax(dim=-1).cpu().numpy())
         top_p.append(np.log(logits.softmax(dim=-1).max(dim=-1).values.cpu().numpy()))
 
-        logits_ranking = logits.argsort(dim=-1, descending=True).cpu()
-        rank_of_correct = (
-            (logits_ranking[:, :-1] == batch[:, 1:].unsqueeze(-1).cpu())
-            .nonzero(as_tuple=True)[2]
-            .view(batch[:, :-1].shape)
-            .numpy()
-        )
-        rank_of_correct = np.concatenate(
-            (rank_of_correct, np.zeros((rank_of_correct.shape[0], 1))), axis=1
-        )
-        ranks_of_correct_token.append(rank_of_correct)
+        ranks_of_correct_token.append(_rank_of_correct_token(logits, batch.to(device)))
 
         loss_short = model.loss_fn(logits, batch.to(device), per_token=True).cpu().numpy()
         losses.append(np.concatenate((loss_short, np.zeros((loss_short.shape[0], 1))), axis=1))
@@ -164,8 +197,11 @@ def get_entropy_activation_df(
     token_df["pred_in_top1"] = token_df["correct_token_rank"] == 0
     token_df["pred_in_top5"] = token_df["correct_token_rank"] < 5
 
-    for neuron_name, chunks in neuron_activations.items():
-        token_df[f"{neuron_name}_activation"] = np.concatenate(chunks, axis=0).flatten()
+    activation_cols = {
+        f"{neuron_name}_activation": np.concatenate(chunks, axis=0).flatten()
+        for neuron_name, chunks in neuron_activations.items()
+    }
+    token_df = pd.concat([token_df, pd.DataFrame(activation_cols)], axis=1)
 
     return token_df
 
@@ -173,8 +209,22 @@ def get_entropy_activation_df(
 def _per_token_loss(
     model: QwenWrapper, logits: torch.Tensor, inp: torch.Tensor, n_repeat: int
 ) -> np.ndarray:
-    loss = model.loss_fn(logits, inp.repeat(n_repeat, 1), per_token=True).cpu().numpy()
-    return np.concatenate((loss, np.zeros((loss.shape[0], 1))), axis=1)
+    del model
+    loss, _, _ = _per_token_metrics(logits, inp.repeat(n_repeat, 1))
+    return loss.cpu().numpy()
+
+
+def _chunk_ablation_metrics(
+    model: QwenWrapper,
+    logits: torch.Tensor,
+    inp: torch.Tensor,
+    n_repeat: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Fused loss / entropy / argmax for one ablation chunk (single log_softmax)."""
+    del model
+    inp_rep = inp.repeat(n_repeat, 1)
+    loss, entropy, top = _per_token_metrics(logits, inp_rep)
+    return loss.cpu().numpy(), entropy.cpu().numpy(), top.cpu().numpy()
 
 
 def mean_ablate_neurons(
@@ -221,17 +271,23 @@ def mean_ablate_neurons(
             updated = res_stream.repeat(n_chunk, 1, 1) + res_delta
 
             te_res = model.ln_final(updated)
-            te_logits = te_res.float() @ model.W_U + model.b_U
-            te_loss.append(_per_token_loss(model, te_logits, inp, n_chunk))
-            te_entropy.append(get_entropy(te_logits).cpu().numpy())
-            te_top.append(te_logits.argmax(dim=-1).cpu().numpy())
+            te_logits = _project_to_logits(model, te_res)
+            te_loss_i, te_entropy_i, te_top_i = _chunk_ablation_metrics(
+                model, te_logits, inp, n_chunk
+            )
+            te_loss.append(te_loss_i)
+            te_entropy.append(te_entropy_i)
+            te_top.append(te_top_i)
             del te_res, te_logits
 
             de_res = model.apply_ln_final_frozen(updated, ln_scales)
-            de_logits = de_res.float() @ model.W_U + model.b_U
-            de_loss.append(_per_token_loss(model, de_logits, inp, n_chunk))
-            de_entropy.append(get_entropy(de_logits).cpu().numpy())
-            de_top.append(de_logits.argmax(dim=-1).cpu().numpy())
+            de_logits = _project_to_logits(model, de_res)
+            de_loss_i, de_entropy_i, de_top_i = _chunk_ablation_metrics(
+                model, de_logits, inp, n_chunk
+            )
+            de_loss.append(de_loss_i)
+            de_entropy.append(de_entropy_i)
+            de_top.append(de_top_i)
             del de_res, de_logits, updated, res_delta
 
         te_loss = np.concatenate(te_loss, axis=0)
@@ -309,7 +365,7 @@ def run_phase2_ablation(
     np.random.seed(cfg.seed)
 
     tokenized = load_tokenized_data(tokenizer, cfg)
-    token_df = nutils.make_token_df(tokenized["tokens"], model=model)
+    token_df = nutils.make_token_df(tokenized_tokens_tensor(tokenized), model=model)
     entropy_df = get_entropy_activation_df(
         neuron_names,
         tokenized,
