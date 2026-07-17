@@ -953,14 +953,19 @@ def _per_token_loss(
 
 
 def load_tokenized_data(tokenizer, cfg: ModelRunConfig, *, add_bos_token: bool = True):
+    import sys
+
     data = load_dataset(cfg.dataset, split="train")
     subset = data.select(range(min(cfg.data_end, len(data))))
+    # Windows + datasets multiprocessing frequently hangs at Map 0%; keep serial there.
+    num_proc = 1 if sys.platform == "win32" else 10
     tokenized = tl_utils.tokenize_and_concatenate(
         subset,
         tokenizer,
         max_length=cfg.max_seq_length,
         column_name="text",
         add_bos_token=add_bos_token,
+        num_proc=num_proc,
     )
     return tokenized.shuffle(cfg.seed)
 

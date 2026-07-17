@@ -58,18 +58,21 @@ class QwenWrapper:
 
     @property
     def W_U(self) -> torch.Tensor:
+        """Unembed matrix; fp16 on CUDA (~0.5GB vs ~1GB fp32) for Qwen's 248k vocab."""
         if self._w_u is None:
-            self._w_u = self.model.lm_head.weight.T.float().to(self.device).contiguous()
+            w = self.model.lm_head.weight.T.to(self.device)
+            self._w_u = w.half().contiguous() if self.device.startswith("cuda") else w.float().contiguous()
         return self._w_u
 
     @property
     def b_U(self) -> torch.Tensor:
         if self._b_u is None:
             bias = self.model.lm_head.bias
+            dtype = torch.float16 if self.device.startswith("cuda") else torch.float32
             if bias is not None:
-                self._b_u = bias.float().to(self.device)
+                self._b_u = bias.to(device=self.device, dtype=dtype)
             else:
-                self._b_u = torch.zeros(self.cfg.d_vocab, dtype=torch.float32, device=self.device)
+                self._b_u = torch.zeros(self.cfg.d_vocab, dtype=dtype, device=self.device)
         return self._b_u
 
     def ln_final(self, x: torch.Tensor) -> torch.Tensor:

@@ -1,4 +1,4 @@
-# Qwen 3.5 0.8B — unified run config (Phase 1, 2)
+# Qwen 3.5 0.8B — unified run config (Phase 1, 2, 2b)
 # Use --model to switch base vs instruct checkpoint.
 # CLI flags override these values when explicitly passed.
 
@@ -20,7 +20,7 @@ hyperparameters:
   batch_size: 1
   n_random: 90
   n_random_pct: null
-  chunk_size: 20
+  chunk_size: 5
   filter_start_pos: 3
   filter_end_pos: -1
   n_trace_neurons: 6

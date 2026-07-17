@@ -78,7 +78,7 @@ def _constant_shift_r2(baseline: torch.Tensor, ablated: torch.Tensor) -> torch.T
 
 
 def _spearman_batch(baseline: torch.Tensor, ablated: torch.Tensor) -> torch.Tensor:
-    """Spearman rank correlation per row (vocab axis)."""
+    """Spearman rank correlation per row (vocab axis). Stays on the input device."""
     rank_b = baseline.argsort(dim=-1).argsort(dim=-1).float()
     rank_a = ablated.argsort(dim=-1).argsort(dim=-1).float()
     rb = rank_b - rank_b.mean(dim=-1, keepdim=True)
@@ -91,16 +91,38 @@ def _spearman_batch(baseline: torch.Tensor, ablated: torch.Tensor) -> torch.Tens
 def _topk_jaccard_batch(
     baseline: torch.Tensor, ablated: torch.Tensor, k: int = 5
 ) -> torch.Tensor:
-    """Jaccard overlap of top-k token indices per row."""
+    """Jaccard overlap of top-k token indices per row (vectorized; topk ids are unique)."""
     top_b = baseline.topk(k, dim=-1).indices
     top_a = ablated.topk(k, dim=-1).indices
-    out = torch.empty(baseline.shape[0], device=baseline.device, dtype=torch.float32)
-    for i in range(baseline.shape[0]):
-        set_b = set(top_b[i].tolist())
-        set_a = set(top_a[i].tolist())
-        union = set_b | set_a
-        out[i] = len(set_b & set_a) / max(len(union), 1)
-    return out
+    # (N, k, k) equality → intersection size; |union| = 2k - |intersection|
+    inter = (top_b.unsqueeze(-1) == top_a.unsqueeze(-2)).any(dim=-1).sum(dim=-1).float()
+    return inter / (2 * k - inter).clamp(min=1.0)
+
+
+# Full-vocab Spearman on ~248k tokens is the Phase-2b bottleneck on Qwen (argsort
+# dominated the crashed full run at ~40 min/batch). Subsample keeps rank signal.
+_SPEARMAN_LARGE_VOCAB_SAMPLE = 8192
+_SPEARMAN_SUBSAMPLE_SEED = 0
+
+
+def _spearman_large_vocab(baseline: torch.Tensor, ablated: torch.Tensor) -> torch.Tensor:
+    """Spearman on a fixed vocab subsample — fast + memory-safe for Qwen-scale vocabs."""
+    d_vocab = baseline.shape[-1]
+    n_sample = min(_SPEARMAN_LARGE_VOCAB_SAMPLE, d_vocab)
+    gen = torch.Generator(device="cpu")
+    gen.manual_seed(_SPEARMAN_SUBSAMPLE_SEED)
+    idx = torch.randperm(d_vocab, generator=gen)[:n_sample]
+    if baseline.is_cuda:
+        idx = idx.to(baseline.device, non_blocking=True)
+    return _spearman_batch(baseline.index_select(-1, idx), ablated.index_select(-1, idx))
+
+
+def _spearman_chunked(baseline: torch.Tensor, ablated: torch.Tensor) -> torch.Tensor:
+    """Spearman that stays memory-safe on ~248k vocabs (8GB GPUs)."""
+    d_vocab = baseline.shape[-1]
+    if d_vocab < 100_000:
+        return _spearman_batch(baseline, ablated)
+    return _spearman_large_vocab(baseline, ablated)
 
 
 def batch_distribution_metrics(
@@ -109,25 +131,38 @@ def batch_distribution_metrics(
     *,
     topk: int = 5,
 ) -> dict[str, np.ndarray]:
-    """Metrics comparing baseline vs ablated logit vectors (N, vocab)."""
+    """Metrics comparing baseline vs ablated logit vectors (N, vocab).
+
+    Softmax runs after logit-space metrics so peak VRAM holds fewer large tensors.
+    Large-vocab Spearman uses a fixed 8k subsample (full argsort is impractical).
+    """
     base = baseline_logits.float()
     abl = ablated_logits.float()
+
+    out: dict[str, np.ndarray] = {
+        "argmax_flip": (base.argmax(dim=-1) != abl.argmax(dim=-1))
+        .detach()
+        .cpu()
+        .numpy()
+        .astype(np.float32),
+        "affine_r2": _affine_r2(base, abl).detach().cpu().numpy(),
+        "constant_shift_r2": _constant_shift_r2(base, abl).detach().cpu().numpy(),
+        f"top{topk}_jaccard": _topk_jaccard_batch(base, abl, k=topk).detach().cpu().numpy(),
+        "spearman_rho": _spearman_chunked(base, abl).detach().cpu().numpy(),
+    }
+
     p = torch.softmax(base, dim=-1)
+    del base
     q = torch.softmax(abl, dim=-1)
+    del abl
 
     h_base = -(p * p.clamp(min=1e-12).log()).sum(dim=-1)
     h_abl = -(q * q.clamp(min=1e-12).log()).sum(dim=-1)
-
-    return {
-        "kl_divergence": _kl_divergence(p, q).cpu().numpy(),
-        "js_divergence": _js_divergence(p, q).cpu().numpy(),
-        "delta_entropy": (h_abl - h_base).cpu().numpy(),
-        "argmax_flip": (base.argmax(dim=-1) != abl.argmax(dim=-1)).cpu().numpy().astype(np.float32),
-        "affine_r2": _affine_r2(base, abl).cpu().numpy(),
-        "constant_shift_r2": _constant_shift_r2(base, abl).cpu().numpy(),
-        "spearman_rho": _spearman_batch(base, abl).cpu().numpy(),
-        f"top{topk}_jaccard": _topk_jaccard_batch(base, abl, k=topk).cpu().numpy(),
-    }
+    out["kl_divergence"] = _kl_divergence(p, q).detach().cpu().numpy()
+    out["js_divergence"] = _js_divergence(p, q).detach().cpu().numpy()
+    out["delta_entropy"] = (h_abl - h_base).detach().cpu().numpy()
+    del p, q
+    return out
 
 
 def _seq_ln_scales(ln_scales: torch.Tensor, seq_len: int) -> torch.Tensor:
@@ -141,36 +176,59 @@ def _seq_ln_scales(ln_scales: torch.Tensor, seq_len: int) -> torch.Tensor:
     return s
 
 
-def _de_logits(model, updated: torch.Tensor, ln_scales: torch.Tensor) -> torch.Tensor:
-    """DE_LN logits with frozen per-position LN/RMSNorm scales."""
+def _project_to_logits(model, resid: torch.Tensor) -> torch.Tensor:
+    """Unembed residual stream. Use fp16 matmul on CUDA for large-vocab models (Qwen ~248k)."""
+    d_vocab = int(getattr(model.cfg, "d_vocab", model.W_U.shape[-1]))
+    if resid.is_cuda and d_vocab >= 100_000:
+        w_u = model.W_U if model.W_U.dtype == torch.float16 else model.W_U.half()
+        b_u = model.b_U if model.b_U.dtype == torch.float16 else model.b_U.half()
+        return resid.half() @ w_u + b_u
+    w_u = model.W_U.float() if hasattr(model.W_U, "float") else model.W_U
+    b_u = model.b_U.float() if hasattr(model.b_U, "float") else model.b_U
+    return resid.float() @ w_u + b_u
+
+
+def _de_normed(model, updated: torch.Tensor, ln_scales: torch.Tensor) -> torch.Tensor:
+    """Apply frozen final LN/RMSNorm (no unembed)."""
     seq_len = updated.shape[-2]
     scales = _seq_ln_scales(ln_scales, seq_len)
     if callable(getattr(model, "apply_ln_final_frozen", None)):
-        normed = model.apply_ln_final_frozen(updated, scales)
-    else:
-        scales_bc = scales.view(1, -1, 1)
-        if model.cfg.normalization_type in ("RMSPre",) or getattr(model.cfg, "final_rms", False):
-            normed = updated.float() / scales_bc
-        elif model.cfg.normalization_type in ("LNPre", "LN"):
-            centered = updated - updated.mean(dim=-1, keepdim=True)
-            normed = centered.float() / scales_bc
-        else:
-            normed = _apply_ln_final(model, updated, scales)
-    w_u = model.W_U.float() if hasattr(model.W_U, "float") else model.W_U
-    b_u = model.b_U.float() if hasattr(model.b_U, "float") else model.b_U
-    return normed.float() @ w_u + b_u
+        return model.apply_ln_final_frozen(updated, scales)
+    scales_bc = scales.view(1, -1, 1)
+    if model.cfg.normalization_type in ("RMSPre",) or getattr(model.cfg, "final_rms", False):
+        return updated.float() / scales_bc
+    if model.cfg.normalization_type in ("LNPre", "LN"):
+        centered = updated - updated.mean(dim=-1, keepdim=True)
+        return centered.float() / scales_bc
+    return _apply_ln_final(model, updated, scales)
+
+
+def _de_logits(model, updated: torch.Tensor, ln_scales: torch.Tensor) -> torch.Tensor:
+    """DE_LN logits with frozen per-position LN/RMSNorm scales."""
+    return _project_to_logits(model, _de_normed(model, updated, ln_scales))
 
 
 def _te_logits(model, res_stream: torch.Tensor) -> torch.Tensor:
-    normed = model.ln_final(res_stream)
-    w_u = model.W_U.float() if hasattr(model.W_U, "float") else model.W_U
-    b_u = model.b_U.float() if hasattr(model.b_U, "float") else model.b_U
-    return normed.float() @ w_u + b_u
+    return _project_to_logits(model, model.ln_final(res_stream))
 
 
 def _w_out_last(model, layer_idx: int) -> torch.Tensor:
     w_out = model.W_out[layer_idx]
     return w_out.float() if hasattr(w_out, "float") else w_out
+
+
+def _pos_microbatch_size(model, n_chunk: int, seq_len: int, *, n_logit_bufs: int = 2) -> int:
+    """Keep GPU logit+metric buffers tiny on large-vocab / 8GB cards.
+
+    Hard-caps microbatch so we never spill into system RAM (which hangs/kills
+    the process on Windows without a Python traceback).
+    """
+    d_vocab = int(getattr(model.cfg, "d_vocab", model.W_U.shape[-1]))
+    if d_vocab < 100_000:
+        return max(seq_len, 1)
+    bytes_per_row = d_vocab * (2 + 4 * max(n_logit_bufs, 1))
+    micro = max(1, int(0.25 * (1024**3) / (max(n_chunk, 1) * bytes_per_row)))
+    return min(micro, seq_len, 4)  # hard cap: at most 4 positions per step
 
 
 def mean_ablate_neurons_distribution(
@@ -185,14 +243,24 @@ def mean_ablate_neurons_distribution(
     softmax_top_k: int = 50,
     n_example_tokens: int = 5,
     example_candidates: list[dict] | None = None,
+    branch: AblationBranch = "both",
 ) -> tuple[pd.DataFrame, list[dict]]:
-    """Mean-ablate neurons; record per-token distribution metrics (TE + DE_LN)."""
+    """Mean-ablate neurons; record per-token distribution metrics (TE and/or DE_LN)."""
     layer_idx = cfg.last_layer(model)
     neuron_indices = [int(n.split(".")[1]) for n in neuron_names]
-    activation_means = torch.tensor(
-        entropy_df[[f"{n}_activation" for n in neuron_names]].mean().values,
-        dtype=torch.float32,
+    # Per-column float64 mean: float16 pandas/numpy reductions overflow on long C4 runs
+    act_cols = [f"{n}_activation" for n in neuron_names]
+    act_means_np = np.stack(
+        [np.asarray(entropy_df[c], dtype=np.float64).mean() for c in act_cols]
     )
+    if not np.isfinite(act_means_np).all():
+        bad = [act_cols[i] for i, v in enumerate(act_means_np) if not np.isfinite(v)]
+        raise RuntimeError(f"Non-finite activation means (dtype overflow?): {bad[:5]}")
+    activation_means = torch.tensor(act_means_np, dtype=torch.float32)
+    do_te = branch in ("te", "both")
+    do_de = branch in ("de_ln", "both")
+    # Metrics stage at most 2 large fp32 tensors at once (see batch_distribution_metrics)
+    n_logit_bufs = 2
     batch_ids = np.random.choice(entropy_df["batch"].unique(), cfg.k, replace=False)
     filtered = entropy_df[entropy_df["batch"].isin(batch_ids)].copy()
     frames: list[pd.DataFrame] = []
@@ -205,6 +273,7 @@ def mean_ablate_neurons_distribution(
         _, cache = model.run_with_cache(inp)
         rows = filtered[filtered["batch"] == batch_n]
         pos_idx = rows["pos"].values.astype(np.int64)
+        n_pos = len(pos_idx)
         res_stream = cache[tl_utils.get_act_name("resid_post", layer_idx)][0]
         seq_len = int(res_stream.shape[0])
         ln_scales = _seq_ln_scales(
@@ -215,8 +284,8 @@ def mean_ablate_neurons_distribution(
         del cache
         act_deltas = activation_means.to(prev_act.device) - prev_act
 
-        baseline_logits = _te_logits(model, res_stream.unsqueeze(0)).squeeze(0)
-        baseline_rows = baseline_logits[pos_idx]
+        # Baseline logits only at needed positions (avoids full-seq vocab materialization).
+        baseline_rows = _te_logits(model, res_stream.unsqueeze(0)[:, pos_idx, :]).squeeze(0)
 
         for start in range(0, len(neuron_indices), chunk_size):
             idx_chunk = neuron_indices[start : start + chunk_size]
@@ -225,21 +294,74 @@ def mean_ablate_neurons_distribution(
             res_delta = res_delta.permute(1, 0, 2)
             n_chunk = res_delta.shape[0]
             updated = res_stream.repeat(n_chunk, 1, 1) + res_delta
+            del res_delta
 
-            te_logits = _te_logits(model, updated)
-            de_logits = _de_logits(model, updated, ln_scales)
-            te_rows = te_logits[:, pos_idx, :]
-            de_rows = de_logits[:, pos_idx, :]
+            te_metric_parts: dict[str, list[np.ndarray]] = {}
+            de_metric_parts: dict[str, list[np.ndarray]] = {}
+            example_te_rows: dict[int, tuple[float, torch.Tensor, int]] = {}
+            pos_micro = _pos_microbatch_size(model, n_chunk, n_pos, n_logit_bufs=n_logit_bufs)
 
-            te_flat = te_rows.reshape(-1, te_rows.shape[-1])
-            de_flat = de_rows.reshape(-1, de_rows.shape[-1])
-            base_flat = baseline_rows.repeat(n_chunk, 1)
-            te_metrics = batch_distribution_metrics(base_flat, te_flat)
-            te_metrics = {k: v.reshape(n_chunk, len(pos_idx)) for k, v in te_metrics.items()}
-            de_metrics = batch_distribution_metrics(base_flat, de_flat)
-            de_metrics = {k: v.reshape(n_chunk, len(pos_idx)) for k, v in de_metrics.items()}
+            large_vocab = int(getattr(model.cfg, "d_vocab", baseline_rows.shape[-1])) >= 100_000
+            for p0 in range(0, n_pos, pos_micro):
+                p_slice = slice(p0, min(p0 + pos_micro, n_pos))
+                p_abs = pos_idx[p_slice]
+                n_micro = len(p_abs)
 
-            del te_logits, de_logits, updated, res_delta, te_flat, de_flat, base_flat
+                updated_sel = updated[:, p_abs, :]
+                base_rows = baseline_rows[p_slice]
+                # Expand baseline once per microbatch; keep on GPU (CPU full-vocab
+                # softmax/spearman was the ~40 min/batch hang on Qwen).
+                base_flat = (
+                    base_rows.unsqueeze(0)
+                    .expand(n_chunk, -1, -1)
+                    .reshape(-1, base_rows.shape[-1])
+                )
+
+                if do_te:
+                    te_rows = _te_logits(model, updated_sel)
+                    te_flat = te_rows.reshape(-1, te_rows.shape[-1])
+                    te_m = batch_distribution_metrics(base_flat, te_flat)
+                    for key, arr in te_m.items():
+                        te_metric_parts.setdefault(key, []).append(arr.reshape(n_chunk, n_micro))
+
+                    if len(examples) < n_example_tokens * 2:
+                        js = te_m["js_divergence"].reshape(n_chunk, n_micro)
+                        for i in range(n_chunk):
+                            local_j = int(np.argmax(js[i]))
+                            js_val = float(js[i, local_j])
+                            prev = example_te_rows.get(i)
+                            if prev is None or js_val > prev[0]:
+                                example_te_rows[i] = (
+                                    js_val,
+                                    te_rows[i, local_j].detach().float().cpu(),
+                                    int(p_abs[local_j]),
+                                )
+                    del te_rows, te_flat, te_m
+
+                if do_de:
+                    de_rows = _de_logits(model, updated_sel, ln_scales[p_abs])
+                    de_flat = de_rows.reshape(-1, de_rows.shape[-1])
+                    del de_rows
+                    de_m = batch_distribution_metrics(base_flat, de_flat)
+                    for key, arr in de_m.items():
+                        de_metric_parts.setdefault(key, []).append(arr.reshape(n_chunk, n_micro))
+                    del de_flat, de_m
+
+                del updated_sel, base_flat
+                if large_vocab and device.startswith("cuda") and (p0 // pos_micro) % 8 == 7:
+                    torch.cuda.empty_cache()
+
+            del updated
+            te_metrics = (
+                {k: np.concatenate(v, axis=1) for k, v in te_metric_parts.items()}
+                if te_metric_parts
+                else {}
+            )
+            de_metrics = (
+                {k: np.concatenate(v, axis=1) for k, v in de_metric_parts.items()}
+                if de_metric_parts
+                else {}
+            )
 
             for i, name in enumerate(neuron_names[start : start + chunk_size]):
                 chunk = rows.copy()
@@ -256,23 +378,30 @@ def mean_ablate_neurons_distribution(
 
                 frames.append(chunk)
 
-            if len(examples) < n_example_tokens * 2:
+            if do_te and len(examples) < n_example_tokens * 2:
                 for i, name in enumerate(neuron_names[start : start + chunk_size]):
-                    js_vals = te_metrics["js_divergence"][i]
-                    best_j = int(np.argmax(js_vals))
+                    if i not in example_te_rows:
+                        continue
+                    _, te_vec, abs_pos = example_te_rows[i]
+                    # baseline_rows is aligned to pos_idx, not absolute positions
+                    base_j = int(np.where(pos_idx == abs_pos)[0][0])
                     examples.append(
                         _softmax_example_record(
                             name,
                             int(batch_n),
-                            int(pos_idx[best_j]),
-                            baseline_logits[int(pos_idx[best_j])],
-                            te_rows[i, best_j],
+                            abs_pos,
+                            baseline_rows[base_j],
+                            te_vec,
                             top_k=softmax_top_k,
                         )
                     )
                     if len(examples) >= n_example_tokens * 2:
                         break
 
+            if device.startswith("cuda"):
+                torch.cuda.empty_cache()
+
+        del baseline_rows
         if device.startswith("cuda"):
             torch.cuda.empty_cache()
 
@@ -573,8 +702,16 @@ def run_phase2b_distribution_ablation(
     softmax_top_k: int = 50,
     n_example_tokens: int = 5,
     paper_neurons: list[str] | None = None,
+    load_tokenized_fn=None,
+    get_entropy_df_fn=None,
+    filter_df_fn=None,
 ) -> pd.DataFrame:
+    """Run Phase 2b. Optional *_fn hooks let Qwen/Llama reuse family-specific data paths."""
     import neel.utils as nutils
+
+    _load_tokenized = load_tokenized_fn or load_tokenized_data
+    _get_entropy_df = get_entropy_df_fn or get_entropy_activation_df
+    _filter_df = filter_df_fn or filter_entropy_activation_df
 
     out_dir.mkdir(parents=True, exist_ok=True)
     entropy_labels, static_df = load_phase1_outputs(phase1_dir)
@@ -600,9 +737,9 @@ def run_phase2b_distribution_ablation(
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
 
-    tokenized = load_tokenized_data(tokenizer, cfg)
+    tokenized = _load_tokenized(tokenizer, cfg)
     token_df = nutils.make_token_df(tokenized_tokens_tensor(tokenized), model=model)
-    entropy_df = get_entropy_activation_df(
+    entropy_df = _get_entropy_df(
         neuron_names,
         tokenized,
         token_df,
@@ -621,8 +758,9 @@ def run_phase2b_distribution_ablation(
         chunk_size=cfg.chunk_size,
         softmax_top_k=softmax_top_k,
         n_example_tokens=n_example_tokens,
+        branch=branch,
     )
-    dist_df = filter_entropy_activation_df(
+    dist_df = _filter_df(
         raw,
         model_name=cfg.name,
         tokenizer=tokenizer,
