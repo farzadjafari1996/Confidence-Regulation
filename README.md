@@ -26,8 +26,23 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | `src/models/gpt2/exp3/train_logistic.py` | Exp 3 Step 2a: logistic probe + random search |
 | `src/models/gpt2/exp3/train_mlp.py` | Exp 3 Step 2b: MLP probe + random search |
 | `src/models/gpt2/exp3/evaluate.py` | Exp 3 Step 3: test metrics + feature importance |
-| `src/models/llama/` | Llama 3.2 loaders + `1b_base/` / `instruct/` runners |
+| `src/models/llama/` | Llama 3.2 loaders + `1b_base/` / `instruct/` runners (exp1–3) |
 | `src/models/qwen/` | Qwen 3.5 loaders + size/variant runners |
+
+## Outputs layout
+
+```
+outputs/
+  gpt2/
+    reproduce/{phase1,phase2,phase2b,phase3}/
+    exp1/  exp1_sanity/
+    exp2/
+    exp3/  exp3_sanity/
+  llama_3.2_1B_base/   …
+  llama_3.2_1B_instruct/ …
+  qwen_3.5_0.8B_base/  …
+  comparison/          # cross-model aggregates
+```
 
 ## Quick start
 
@@ -52,7 +67,7 @@ python src/experiments/exp1/run_sanity_checks.py --model gpt2-small
 python src/models/gpt2/exp1/qa_ablation.py --device cuda --split sanity
 ```
 
-Outputs: `outputs/gpt2-small/phase1/` → `phase2/` → `phase3/`; extensions under `exp1/`, `exp2/`
+Outputs: `outputs/gpt2/reproduce/phase1/` → `phase2/` → `phase3/`; extensions under `exp1/`, `exp2/`
 
 Exp 2 inter-layer weight projection (static; after optional Phase 1 for W_U sanity):
 
@@ -68,24 +83,30 @@ python src/models/qwen/2b_base/exp2/weight_projection.py --device cuda
 python src/models/qwen/2b_instruct/exp2/weight_projection.py --device cuda
 ```
 
-Exp 3 hallucination probe (gpt2-small + LAMA T-REx; three independent steps):
+Exp 3 hallucination probe (last-MLP activations → correct/wrong classifier; three independent steps):
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-# Step 1 — forward GPT-2 once; saves full last-MLP acts + label fields
+# Step 1 — forward model once; saves full last-MLP acts + label fields
 python src/models/gpt2/exp3/collect.py --device cuda --split sanity
 python src/models/gpt2/exp3/collect.py --device cuda --split main
+python src/models/llama/1b_base/exp3/collect.py --device cuda --split sanity
+python src/models/llama/instruct/exp3/collect.py --device cuda --split sanity
 
-# Step 2 — train probes on the saved dataset (no GPT-2)
+# Step 2 — train probes on the saved dataset (no LLM)
 python src/models/gpt2/exp3/train_logistic.py --split main --label top1
 python src/models/gpt2/exp3/train_mlp.py --split main --label top1 --device cuda
+python src/models/llama/1b_base/exp3/train_logistic.py --split main --label top1
+python src/models/llama/instruct/exp3/train_logistic.py --split main --label top1
 
 # Step 3 — held-out test + per-neuron importance
 python src/models/gpt2/exp3/evaluate.py --model logistic --split main
 python src/models/gpt2/exp3/evaluate.py --model mlp --split main
+python src/models/llama/1b_base/exp3/evaluate.py --model logistic --split main
+python src/models/llama/instruct/exp3/evaluate.py --model logistic --split main
 ```
 
-Outputs: `outputs/gpt2-small/exp3/` (or `exp3_sanity/`). Change `--label` (`top1`, `top5`, `confident_error`, …) without re-collecting.
+Outputs: `outputs/<model_slug>/exp3/` (or `exp3_sanity/`). Change `--label` (`top1`, `top5`, `confident_error`, …) without re-collecting.
 
 For gated models, set `HF_TOKEN` or add `reference_code/ablations/hf_token.txt`.
 

@@ -203,7 +203,7 @@ def run_exp2(
     # Sanity vs Phase 1
     last = int(model.cfg.n_layers) - 1
     last_wu = all_df[(all_df["writer_layer"] == last) & (all_df["reader"] == "W_U")]
-    phase1_dir = cfg.study_dir().parent / "phase1"
+    phase1_dir = cfg.study_dir().parent / "reproduce" / "phase1"
     sanity_results: list[dict[str, Any]] = run_unit_checks()
     sanity_results.append(compare_to_phase1(last_wu, phase1_dir))
     write_sanity_report(out_dir, sanity_results)

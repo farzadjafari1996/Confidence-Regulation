@@ -10,6 +10,10 @@ import torch
 import tqdm
 from transformer_lens import utils as tl_utils
 
+from exp1.ablation_engine import encode_prompt, forward_cache
+from exp1.data_loaders import load_or_create_item_splits
+from exp1.prompts import build_lama_prompt
+from exp1.settings import Exp1Config, LamaDatasetSettings, ModelSpec
 from exp3.dataset_io import (
     dataset_path,
     ensure_splits,
@@ -21,11 +25,41 @@ from exp3.dataset_io import (
 )
 from exp3.settings import Exp3Config, SplitName
 from gpt2.core import get_entropy
-from hyperparameters import GPT2_HPARAMS, ModelRunConfig, model_slug
-from exp1.ablation_engine import encode_prompt, forward_cache
-from exp1.data_loaders import load_or_create_item_splits
-from exp1.prompts import build_lama_prompt
-from exp1.settings import Exp1Config, LamaDatasetSettings, ModelSpec
+from hyperparameters import GPT2_HPARAMS, LLAMA_HPARAMS, ModelRunConfig, model_slug, qwen_hparams_for_model
+
+
+def _model_spec(cfg: Exp3Config) -> ModelSpec:
+    return ModelSpec(
+        family=cfg.family,  # type: ignore[arg-type]
+        model=cfg.model,
+        use_chat_template=cfg.use_chat_template,
+    )
+
+
+def _hparams_for_family(cfg: Exp3Config):
+    if cfg.family == "gpt2":
+        return GPT2_HPARAMS
+    if cfg.family == "llama":
+        return LLAMA_HPARAMS
+    if cfg.family == "qwen":
+        return qwen_hparams_for_model(cfg.model)
+    raise ValueError(f"Unsupported Exp3 family: {cfg.family}")
+
+
+def _load_model(cfg: Exp3Config, run_cfg: ModelRunConfig, device: str):
+    if cfg.family == "gpt2":
+        from gpt2.load import load_gpt2
+
+        return load_gpt2(run_cfg, device)
+    if cfg.family == "llama":
+        from llama.load import load_llama
+
+        return load_llama(run_cfg, device)
+    if cfg.family == "qwen":
+        from qwen.load import load_qwen
+
+        return load_qwen(run_cfg, device)
+    raise ValueError(f"Unsupported Exp3 family: {cfg.family}")
 
 
 def _items_for_split(cfg: Exp3Config, split_name: SplitName, tokenizer) -> list[dict[str, Any]]:
@@ -39,7 +73,7 @@ def _items_for_split(cfg: Exp3Config, split_name: SplitName, tokenizer) -> list[
         out_dir=cfg.out_dir,
         data_dir=cfg.data_dir,
         seed=cfg.seed,
-        models=[ModelSpec(family="gpt2", model=cfg.model, use_chat_template=False)],
+        models=[_model_spec(cfg)],
         sample_sizes=dict(cfg.sample_sizes),
         lama=lama,
     )
@@ -109,8 +143,8 @@ def collect_item(
     item: dict[str, Any],
     *,
     device: str,
+    model_spec: ModelSpec,
 ) -> dict[str, Any]:
-    model_spec = ModelSpec(family="gpt2", model="gpt2-small", use_chat_template=False)
     prompt = build_lama_prompt(item["masked_sentence"], model_spec, tokenizer)
     input_ids = encode_prompt(tokenizer, prompt, device)
     logits_raw, cache = forward_cache(model, input_ids)
@@ -170,12 +204,14 @@ def run_collect(
             if p.exists():
                 p.unlink()
 
-    run_cfg = ModelRunConfig.from_hparams(cfg.model, GPT2_HPARAMS, dtype=cfg.dtype)
-    from gpt2.load import load_gpt2
-
-    model, tokenizer = load_gpt2(run_cfg, device)
+    run_cfg = ModelRunConfig.from_hparams(cfg.model, _hparams_for_family(cfg), dtype=cfg.dtype)
+    model, tokenizer = _load_model(cfg, run_cfg, device)
+    model_spec = _model_spec(cfg)
     items = _items_for_split(cfg, split_name, tokenizer)
-    print(f"Collecting Ext3 {split_name}: {len(items)} LAMA items on {device}")
+    print(
+        f"Collecting Ext3 {split_name}: {len(items)} LAMA items "
+        f"on {device} ({cfg.family}/{cfg.model})"
+    )
 
     skip_ids: set[str] = set()
     if resume and part_path.exists() and not force:
@@ -198,7 +234,9 @@ def run_collect(
             item["gold_token_id"] = ids[0]
             item["item_id"] = item_id
 
-        row = collect_item(model, tokenizer, item, device=device)
+        row = collect_item(
+            model, tokenizer, item, device=device, model_spec=model_spec
+        )
         arrays["X_full"].append(row["X_full"])
         arrays["y_top1"].append(row["y_top1"])
         arrays["y_top5"].append(row["y_top5"])
@@ -232,6 +270,8 @@ def run_collect(
         meta_path(data_dir),
         {
             "model": cfg.model,
+            "family": cfg.family,
+            "use_chat_template": cfg.use_chat_template,
             "split": split_name,
             "n_items": n,
             "d_mlp": d_mlp,

@@ -1,7 +1,7 @@
 """
 Full cross-model comparison across Phase 1, 2, and 2b (roadmap 1C).
 
-Reads artifacts under outputs/<model-slug>/{phase1,phase2,phase2b}/
+Reads artifacts under outputs/<model-slug>/reproduce/{phase1,phase2,phase2b}/
 and writes aggregated tables + Plotly diagrams to outputs/comparison/.
 
 Usage (after running phase 1 + 2 + 2b for each model):
@@ -29,14 +29,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-_p = pathlib.Path(__file__).resolve().parent
-while _p != _p.parent and not (_p / "bootstrap.py").is_file():
-    _p = _p.parent
-if str(_p) not in sys.path:
-    sys.path.insert(0, str(_p))
-from bootstrap import ensure_src_on_path  # noqa: E402
-
-ensure_src_on_path(__file__)
+_src = pathlib.Path(__file__).resolve().parent
+while _src != _src.parent and not (
+    (_src / "common").is_dir() and (_src / "experiments").is_dir() and (_src / "models").is_dir()
+):
+    _src = _src.parent
+for _p in (_src, _src / "common", _src / "experiments", _src / "models"):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
 
 from hyperparameters import DEFAULT_OUTPUT_DIR, GPT2_PAPER_ENTROPY_NEURONS, model_slug  # noqa: E402
 
@@ -210,10 +211,11 @@ def load_model_track1_metrics(
     outputs_dir: pathlib.Path,
 ) -> dict[str, Any]:
     slug = model_slug(model_name)
-    phase1_dir = outputs_dir / slug / "phase1"
-    phase2_dir = outputs_dir / slug / "phase2"
-    phase2b_dir = outputs_dir / slug / "phase2b"
-    phase3_dir = outputs_dir / slug / "phase3"
+    repro = outputs_dir / slug / "reproduce"
+    phase1_dir = repro / "phase1"
+    phase2_dir = repro / "phase2"
+    phase2b_dir = repro / "phase2b"
+    phase3_dir = repro / "phase3"
 
     phase1 = _read_json(phase1_dir / "summary.json")
     phase2 = _read_json(phase2_dir / "summary.json")
@@ -843,7 +845,7 @@ def write_markdown_report(
     lines = [
         "# Full model comparison — Phase 1 / 2 / 2b",
         "",
-        "Aggregated from `outputs/<model>/{phase1,phase2,phase2b}` summaries "
+        "Aggregated from `outputs/<model>/reproduce/{phase1,phase2,phase2b}` summaries "
         "(and optional Phase 2b feather metrics).",
         "",
         "## Key findings",

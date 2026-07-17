@@ -112,7 +112,7 @@ def run_exp1_main(args: argparse.Namespace) -> None:
         return
 
     run_cfg = _model_run_config(exp1_cfg)
-    phase1_dir = exp1_cfg.out_dir / "phase1"
+    phase1_dir = exp1_cfg.out_dir / "reproduce" / "phase1"
     if not phase1_dir.exists():
         raise FileNotFoundError(f"Run Phase 1 first — missing {phase1_dir}")
 

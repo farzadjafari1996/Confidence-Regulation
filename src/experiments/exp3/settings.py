@@ -52,6 +52,7 @@ class ImportanceSettings:
 class Exp3Config:
     model: str = "gpt2-small"
     family: str = "gpt2"
+    use_chat_template: bool = False
     out_dir: pathlib.Path = ROOT / "outputs"
     data_dir: pathlib.Path = ROOT / "data" / "exp3"
     seed: int = 42
@@ -109,10 +110,15 @@ def load_exp3_config(config_path: pathlib.Path | str) -> Exp3Config:
     log_raw = block.get("logistic") or {}
     mlp_raw = block.get("mlp") or {}
     imp_raw = block.get("importance") or {}
+    exp1_raw = raw.get("exp1") if isinstance(raw.get("exp1"), dict) else {}
+    use_chat = block.get("use_chat_template")
+    if use_chat is None:
+        use_chat = exp1_raw.get("use_chat_template", False)
 
     return Exp3Config(
         model=str(raw.get("model") or "gpt2-small"),
         family=str(raw.get("family") or "gpt2"),
+        use_chat_template=bool(use_chat),
         out_dir=_resolve_path(raw.get("out_dir"), ROOT / "outputs"),
         data_dir=_resolve_path(block.get("data_dir"), ROOT / "data" / "exp3"),
         seed=int(block.get("seed", 42)),

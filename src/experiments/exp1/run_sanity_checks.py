@@ -12,14 +12,15 @@ import argparse
 import pathlib
 import sys
 
-_p = pathlib.Path(__file__).resolve().parent
-while _p != _p.parent and not (_p / 'bootstrap.py').is_file():
-    _p = _p.parent
-if str(_p) not in sys.path:
-    sys.path.insert(0, str(_p))
-from bootstrap import ensure_src_on_path  # noqa: E402
-
-ensure_src_on_path(__file__)
+_src = pathlib.Path(__file__).resolve().parent
+while _src != _src.parent and not (
+    (_src / "common").is_dir() and (_src / "experiments").is_dir() and (_src / "models").is_dir()
+):
+    _src = _src.parent
+for _p in (_src, _src / "common", _src / "experiments", _src / "models"):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
 
 from hyperparameters import ROOT  # noqa: E402
 from exp1.sanity_checks import run_all_sanity_checks  # noqa: E402
