@@ -30,9 +30,9 @@ hyperparameters:
   use_log2_entropy: false
 
 # Ext 1 — QA ablation (LAMA T-REx + TriviaQA)
-ext1:
+exp1:
   use_chat_template: false
-  data_dir: data/ext1
+  data_dir: data/exp1
   seed: 42
   sample_sizes:
     sanity: 20
@@ -80,7 +80,7 @@ ext1:
 
 # Ext 2 — inter-layer MLP→MLP null-space weight projection (static)
 # SwiGLU reader = stacked [gate|up]. Inherits nullspace knobs from hyperparameters.
-ext2:
+exp2:
   seed: 42
   device: cuda
   n_trace_neurons: 6

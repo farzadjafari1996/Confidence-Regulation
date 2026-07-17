@@ -65,9 +65,9 @@ phase3:
       - "L6H10"
       - "L6H3"
 
-ext1:
+exp1:
   use_chat_template: false
-  data_dir: data/ext1
+  data_dir: data/exp1
   seed: 42
   sample_sizes:
     sanity: 20
@@ -115,10 +115,42 @@ ext1:
 
 # Ext 2 — inter-layer MLP→MLP null-space weight projection (static)
 # Inherits nullspace_top_pct / nullspace_k from hyperparameters when omitted.
-ext2:
+exp2:
   seed: 42
   device: cuda
   # nullspace_top_pct: 0.016
   # nullspace_k: 12
   n_trace_neurons: 6
   n_align_random: 15
+
+# Ext 3 — hallucination probe: last-MLP activations → correct/wrong classifier
+exp3:
+  seed: 42
+  device: cuda
+  data_dir: data/exp3
+  sample_sizes:
+    sanity: 50
+    main: 3000
+  split_ratios:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  checkpoint_every: 50
+  label_default: top1
+  confident_error_top1_prob: 0.5
+  lama:
+    hf_path: facebook/lama
+    config: trex
+    filter_single_token_gold: true
+  logistic:
+    n_iter: 40
+    cv: 3
+    max_iter: 2000
+  mlp:
+    n_iter: 20
+    max_epochs: 80
+    batch_size: 64
+    patience: 10
+  importance:
+    n_repeats: 3
+    top_k: 40

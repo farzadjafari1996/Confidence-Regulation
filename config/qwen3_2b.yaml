@@ -29,7 +29,7 @@ hyperparameters:
 
 # Ext 2 — inter-layer MLP→MLP null-space weight projection (static)
 # SwiGLU reader = stacked [gate|up]. Inherits nullspace knobs from hyperparameters.
-ext2:
+exp2:
   seed: 42
   device: cuda
   n_trace_neurons: 6
