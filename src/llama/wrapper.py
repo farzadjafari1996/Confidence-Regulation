@@ -21,9 +21,10 @@ class LlamaCfg:
 
 class LlamaWrapper:
     """
-    Last-layer SwiGLU neurons: post = silu(gate) * up, w_out[i] = down_proj[:, i].
+    SwiGLU neurons: post = silu(gate) * up, w_out[i] = down_proj[:, i].
 
     Provides W_out/W_U, ln_final, loss_fn, and run_with_cache compatible with gpt2/core ablation.
+    Ext2 uses get_W_out / get_W_in for per-layer access without caching all layers.
     """
 
     def __init__(self, model, tokenizer, device: str) -> None:
@@ -36,9 +37,26 @@ class LlamaWrapper:
         self._w_u: torch.Tensor | None = None
         self._b_u: torch.Tensor | None = None
 
+    def get_W_out(self, layer: int) -> torch.Tensor:
+        """Write directions for MLP layer; shape (d_mlp, d_model)."""
+        down = self.model.model.layers[layer].mlp.down_proj.weight
+        return down.T.float()
+
+    def get_W_in(self, layer: int) -> torch.Tensor:
+        """SwiGLU read map stacked [gate | up]; shape (d_model, 2 * d_mlp).
+
+        HF forward uses F.linear(x, weight) = x @ weight.T, so residual-space
+        reader columns are weight.T. Stacking gate and up matches directions
+        barely read by either SwiGLU branch (Ext2 dark subspace).
+        """
+        mlp = self.model.model.layers[layer].mlp
+        gate_t = mlp.gate_proj.weight.T.float()
+        up_t = mlp.up_proj.weight.T.float()
+        return torch.cat([gate_t, up_t], dim=1)
+
     @property
     def W_out(self) -> torch.Tensor:
-        """Shape (n_layers, d_mlp, d_model); only the last layer is populated."""
+        """Shape (n_layers, d_mlp, d_model); only the last layer is populated (Phase 1/2)."""
         if self._w_out is None:
             w = torch.zeros(
                 self.cfg.n_layers,
@@ -47,8 +65,7 @@ class LlamaWrapper:
                 dtype=torch.float32,
                 device=self.device,
             )
-            down = self.model.model.layers[-1].mlp.down_proj.weight
-            w[-1] = down.T.float()
+            w[-1] = self.get_W_out(self._last_layer_idx)
             self._w_out = w
         return self._w_out
 

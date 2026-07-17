@@ -14,6 +14,7 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | `src/gpt2/phase2_ablation.py` | Phase 2: mean ablation (Fig 1, 2c, 2e) |
 | `src/gpt2/phase3_case_study.py` | Phase 3: neuron activity & induction (Fig 4–5) |
 | `src/gpt2/ext1_qa_ablation.py` | Ext 1: QA ablation on LAMA + TriviaQA |
+| `src/gpt2/ext2_weight_projection.py` | Ext 2: inter-layer MLP→MLP null-space ρ |
 
 ## Quick start
 
@@ -38,7 +39,21 @@ python src/qa/run_sanity_checks.py --model gpt2-small
 python src/gpt2/ext1_qa_ablation.py --device cuda --split sanity
 ```
 
-Outputs: `outputs/gpt2-small/phase1/` → `phase2/` → `phase3/`; extension under `ext1/`
+Outputs: `outputs/gpt2-small/phase1/` → `phase2/` → `phase3/`; extensions under `ext1/`, `ext2/`
+
+Ext 2 inter-layer weight projection (static; after optional Phase 1 for W_U sanity):
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src/gpt2/ext2_weight_projection.py --check-functions
+python src/gpt2/ext2_weight_projection.py --device cuda
+python src/llama/ext2_weight_projection_1b.py --device cuda
+python src/llama/ext2_weight_projection_instruct.py --device cuda
+python src/qwen/0.8b_base/ext2_weight_projection.py --device cuda
+python src/qwen/0.8b_instruct/ext2_weight_projection.py --device cuda
+python src/qwen/2b_base/ext2_weight_projection.py --device cuda
+python src/qwen/2b_instruct/ext2_weight_projection.py --device cuda
+```
 
 For gated models, set `HF_TOKEN` or add `reference_code/ablations/hf_token.txt`.
 

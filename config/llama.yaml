@@ -77,3 +77,11 @@ ext1:
   runtime:
     device: cuda
     dtype: null
+
+# Ext 2 — inter-layer MLP→MLP null-space weight projection (static)
+# SwiGLU reader = stacked [gate|up]. Inherits nullspace knobs from hyperparameters.
+ext2:
+  seed: 42
+  device: cuda
+  n_trace_neurons: 6
+  n_align_random: 15

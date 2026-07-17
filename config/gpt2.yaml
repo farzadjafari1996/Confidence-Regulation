@@ -1,4 +1,4 @@
-# GPT-2 — unified run config (Phase 1, 2, 3, ext1)
+# GPT-2 — unified run config (Phase 1, 2, 3, ext1, ext2)
 # CLI flags override these values when explicitly passed.
 
 model: gpt2-small
@@ -112,3 +112,13 @@ ext1:
   runtime:
     device: cuda
     dtype: null
+
+# Ext 2 — inter-layer MLP→MLP null-space weight projection (static)
+# Inherits nullspace_top_pct / nullspace_k from hyperparameters when omitted.
+ext2:
+  seed: 42
+  device: cuda
+  # nullspace_top_pct: 0.016
+  # nullspace_k: 12
+  n_trace_neurons: 6
+  n_align_random: 15
