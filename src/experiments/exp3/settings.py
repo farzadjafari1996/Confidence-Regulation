@@ -11,12 +11,13 @@ from hyperparameters import ROOT, load_config_yaml, model_output_dir
 SplitName = Literal["sanity", "main"]
 LabelName = Literal["top1", "top5", "confident_error", "multiclass", "gold_logprob"]
 ProbeName = Literal["logistic", "mlp"]
+DatasetName = Literal["qa_wikidata"]
 
 
 @dataclass
-class LamaSettings:
-    hf_path: str = "facebook/lama"
-    config: str = "trex"
+class BigBenchSettings:
+    hf_path: str = "tasksource/bigbench"
+    config: str = "qa_wikidata"
     filter_single_token_gold: bool = True
 
 
@@ -53,19 +54,20 @@ class Exp3Config:
     model: str = "gpt2-small"
     family: str = "gpt2"
     use_chat_template: bool = False
+    dataset: DatasetName = "qa_wikidata"
     out_dir: pathlib.Path = ROOT / "outputs"
     data_dir: pathlib.Path = ROOT / "data" / "exp3"
     seed: int = 42
     device: str = "cuda"
     dtype: str | None = None
     sample_sizes: dict[str, int] = field(
-        default_factory=lambda: {"sanity": 50, "main": 3000}
+        default_factory=lambda: {"sanity": 200, "main": 10000}
     )
     split_ratios: SplitRatios = field(default_factory=SplitRatios)
-    checkpoint_every: int = 50
+    checkpoint_every: int = 250
     label_default: LabelName = "top1"
     confident_error_top1_prob: float = 0.5
-    lama: LamaSettings = field(default_factory=LamaSettings)
+    bigbench: BigBenchSettings = field(default_factory=BigBenchSettings)
     logistic: LogisticSettings = field(default_factory=LogisticSettings)
     mlp: MlpSettings = field(default_factory=MlpSettings)
     importance: ImportanceSettings = field(default_factory=ImportanceSettings)
@@ -106,7 +108,7 @@ def load_exp3_config(config_path: pathlib.Path | str) -> Exp3Config:
 
     sizes = block.get("sample_sizes") or {}
     ratios_raw = block.get("split_ratios") or {}
-    lama_raw = block.get("lama") or {}
+    bb_raw = block.get("bigbench") or block.get("qa_wikidata") or {}
     log_raw = block.get("logistic") or {}
     mlp_raw = block.get("mlp") or {}
     imp_raw = block.get("importance") or {}
@@ -115,31 +117,36 @@ def load_exp3_config(config_path: pathlib.Path | str) -> Exp3Config:
     if use_chat is None:
         use_chat = exp1_raw.get("use_chat_template", False)
 
+    dataset = str(block.get("dataset") or "qa_wikidata")
+    if dataset != "qa_wikidata":
+        raise ValueError(f"Unsupported Exp3 dataset: {dataset} (only qa_wikidata)")
+
     return Exp3Config(
         model=str(raw.get("model") or "gpt2-small"),
         family=str(raw.get("family") or "gpt2"),
         use_chat_template=bool(use_chat),
+        dataset="qa_wikidata",
         out_dir=_resolve_path(raw.get("out_dir"), ROOT / "outputs"),
         data_dir=_resolve_path(block.get("data_dir"), ROOT / "data" / "exp3"),
         seed=int(block.get("seed", 42)),
         device=str(block.get("device", "cuda")),
         dtype=dtype,
         sample_sizes={
-            "sanity": int(sizes.get("sanity", 50)),
-            "main": int(sizes.get("main", 3000)),
+            "sanity": int(sizes.get("sanity", 200)),
+            "main": int(sizes.get("main", 10000)),
         },
         split_ratios=SplitRatios(
             train=float(ratios_raw.get("train", 0.70)),
             val=float(ratios_raw.get("val", 0.15)),
             test=float(ratios_raw.get("test", 0.15)),
         ),
-        checkpoint_every=int(block.get("checkpoint_every", 50)),
+        checkpoint_every=int(block.get("checkpoint_every", 250)),
         label_default=str(block.get("label_default", "top1")),  # type: ignore[arg-type]
         confident_error_top1_prob=float(block.get("confident_error_top1_prob", 0.5)),
-        lama=LamaSettings(
-            hf_path=str(lama_raw.get("hf_path", "facebook/lama")),
-            config=str(lama_raw.get("config", "trex")),
-            filter_single_token_gold=bool(lama_raw.get("filter_single_token_gold", True)),
+        bigbench=BigBenchSettings(
+            hf_path=str(bb_raw.get("hf_path", "tasksource/bigbench")),
+            config=str(bb_raw.get("config", "qa_wikidata")),
+            filter_single_token_gold=bool(bb_raw.get("filter_single_token_gold", True)),
         ),
         logistic=LogisticSettings(
             n_iter=int(log_raw.get("n_iter", 40)),

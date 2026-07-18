@@ -88,23 +88,25 @@ exp2:
 
 # Ext 3 — hallucination probe: last-MLP activations → correct/wrong classifier
 exp3:
-  use_chat_template: true
+  dataset: qa_wikidata
+  # Cloze next-token probe: keep same prompt format as base (chat wraps break completion).
+  use_chat_template: false
   seed: 42
   device: cuda
   data_dir: data/exp3
   sample_sizes:
-    sanity: 50
-    main: 3000
+    sanity: 200
+    main: 10000
   split_ratios:
     train: 0.70
     val: 0.15
     test: 0.15
-  checkpoint_every: 50
+  checkpoint_every: 250
   label_default: top1
   confident_error_top1_prob: 0.5
-  lama:
-    hf_path: facebook/lama
-    config: trex
+  bigbench:
+    hf_path: tasksource/bigbench
+    config: qa_wikidata
     filter_single_token_gold: true
   logistic:
     n_iter: 40

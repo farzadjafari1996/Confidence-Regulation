@@ -142,8 +142,14 @@ def ensure_splits(
 
     data_dir = cfg.data_out_dir(split_name)
     path = split_path(data_dir)
+    n = int(np.asarray(data["y_top1"]).shape[0])
     if path.exists():
-        return load_splits(path)
+        splits = load_splits(path)
+        used = {int(i) for key in ("train", "val", "test") for i in splits.get(key, [])}
+        # Keep only if indices form a full partition of the current dataset.
+        if used == set(range(n)):
+            return splits
+        path.unlink()
 
     y, task = build_targets(
         data,

@@ -15,7 +15,7 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | `src/experiments/exp3/` | Exp 3 shared library (hallucination probe) |
 | `data/exp1/` | Exp 1 cached LAMA / TriviaQA items |
 | `data/exp2/` | Exp 2 data (reserved) |
-| `data/exp3/` | Exp 3 LAMA item cache |
+| `data/exp3/` | Exp 3 item cache (BIG-bench `qa_wikidata`) |
 | `src/models/gpt2/core.py` | GPT-2 metrics, plots, ablation engine |
 | `src/models/gpt2/phase1_identify.py` | Phase 1: static identification (Fig 2a, 2d) |
 | `src/models/gpt2/phase2_ablation.py` | Phase 2: mean ablation (Fig 1, 2c, 2e) |
@@ -83,7 +83,7 @@ python src/models/qwen/2b_base/exp2/weight_projection.py --device cuda
 python src/models/qwen/2b_instruct/exp2/weight_projection.py --device cuda
 ```
 
-Exp 3 hallucination probe (last-MLP activations → correct/wrong classifier; three independent steps):
+Exp 3 hallucination probe (BIG-bench `qa_wikidata` cloze → last-MLP acts → correct/wrong classifier):
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
