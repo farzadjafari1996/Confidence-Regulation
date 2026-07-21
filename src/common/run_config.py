@@ -117,7 +117,7 @@ def add_phase2_cli(parser: argparse.ArgumentParser, family: Family) -> None:
     )
 
 
-def add_phase2b_cli(parser: argparse.ArgumentParser, family: Family) -> None:
+def add_phase3_cli(parser: argparse.ArgumentParser, family: Family) -> None:
     add_phase2_cli(parser, family)
     parser.add_argument(
         "--branch",

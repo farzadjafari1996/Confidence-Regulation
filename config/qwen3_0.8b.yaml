@@ -27,7 +27,7 @@ hyperparameters:
   box_plot_n_random: 10
   use_log2_entropy: false
 
-# Ext 2 — inter-layer MLP→MLP null-space weight projection (static)
+# Exp 2 — inter-layer MLP→MLP null-space weight projection (static)
 # SwiGLU reader = stacked [gate|up]. Inherits nullspace knobs from hyperparameters.
 exp2:
   seed: 42

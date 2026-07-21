@@ -1,4 +1,4 @@
-"""Runner for Ext 2 static inter-layer weight projection."""
+"""Runner for Exp 2 static inter-layer weight projection."""
 
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ def run_exp2(
     save_png: bool = False,
     plots_only: bool = False,
 ) -> pathlib.Path:
-    """Run Ext 2 analysis; returns output directory."""
+    """Run Exp 2 analysis; returns output directory."""
     set_save_png(save_png)
     out_dir = cfg.study_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -203,7 +203,7 @@ def run_exp2(
     # Sanity vs Phase 1
     last = int(model.cfg.n_layers) - 1
     last_wu = all_df[(all_df["writer_layer"] == last) & (all_df["reader"] == "W_U")]
-    phase1_dir = cfg.study_dir().parent / "reproduce" / "phase1"
+    phase1_dir = cfg.study_dir().parent / "exp1" / "phase1"
     sanity_results: list[dict[str, Any]] = run_unit_checks()
     sanity_results.append(compare_to_phase1(last_wu, phase1_dir))
     write_sanity_report(out_dir, sanity_results)

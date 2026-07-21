@@ -1,4 +1,4 @@
-"""Ext 3 hallucination-probe configuration."""
+"""Exp 3 hallucination-probe configuration."""
 
 from __future__ import annotations
 
@@ -121,10 +121,7 @@ def load_exp3_config(config_path: pathlib.Path | str) -> Exp3Config:
     log_raw = block.get("logistic") or {}
     mlp_raw = block.get("mlp") or {}
     imp_raw = block.get("importance") or {}
-    exp1_raw = raw.get("exp1") if isinstance(raw.get("exp1"), dict) else {}
-    use_chat = block.get("use_chat_template")
-    if use_chat is None:
-        use_chat = exp1_raw.get("use_chat_template", False)
+    use_chat = bool(block.get("use_chat_template", False))
 
     dataset = str(block.get("dataset") or "qa_wikidata")
     if dataset != "qa_wikidata":

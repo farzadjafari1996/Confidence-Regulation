@@ -1,4 +1,4 @@
-"""Sanity checks for Ext 2 (math + Phase-1 last→W_U agreement)."""
+"""Sanity checks for Exp 2 (math + Phase-1 last→W_U agreement)."""
 
 from __future__ import annotations
 

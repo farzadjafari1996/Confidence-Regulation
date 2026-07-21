@@ -1,4 +1,4 @@
-"""Plots for Ext 2 inter-layer ρ analysis."""
+"""Plots for Exp 2 inter-layer ρ analysis."""
 
 from __future__ import annotations
 

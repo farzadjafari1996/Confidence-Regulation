@@ -1,4 +1,4 @@
-"""Load and sample BIG-bench qa_wikidata items for Ext 3."""
+"""Load and sample BIG-bench qa_wikidata items for Exp 3."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 
 from datasets import load_dataset
 
-from exp1.data_loaders import _gold_token_id
+from exp3.model_utils import gold_token_id
 from exp3.settings import BigBenchSettings, Exp3Config, SplitName
 
 
@@ -66,7 +66,7 @@ def _filter_for_tokenizer(
         gold_ids: list[int] = []
         gold_strs: list[str] = []
         for alias in item.get("gold_aliases") or [item["gold_answer"]]:
-            tid = _gold_token_id(tokenizer, alias)
+            tid = gold_token_id(tokenizer, alias)
             if tid is None:
                 continue
             if tid not in gold_ids:

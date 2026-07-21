@@ -1,4 +1,4 @@
-"""Shared CLI helpers for Ext 2 weight-projection entry points."""
+"""Shared CLI helpers for Exp 2 weight-projection entry points."""
 
 from __future__ import annotations
 

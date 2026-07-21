@@ -1,1 +1,1 @@
-"""Shared experiment libraries (Ext 1–3)."""
+"""Shared experiment libraries (Exp 1–3)."""

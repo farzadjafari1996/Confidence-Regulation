@@ -162,7 +162,7 @@ MODEL_OUTPUT_SLUGS: dict[str, str] = {
     "Qwen/Qwen3.5-2B": "qwen_3.5_2B_instruct",
 }
 
-REPRODUCE_SUBDIR = "reproduce"
+EXP1_SUBDIR = "exp1"
 
 
 def model_slug(model_name: str) -> str:
@@ -177,9 +177,9 @@ def model_output_dir(model_name: str, base: pathlib.Path | None = None) -> pathl
     return (base or DEFAULT_OUTPUT_DIR) / model_slug(model_name)
 
 
-def reproduce_dir(model_name: str, base: pathlib.Path | None = None) -> pathlib.Path:
-    """Return outputs/<model-slug>/reproduce/ (paper phases 1–3)."""
-    return model_output_dir(model_name, base) / REPRODUCE_SUBDIR
+def exp1_dir(model_name: str, base: pathlib.Path | None = None) -> pathlib.Path:
+    """Return outputs/<model-slug>/exp1/ (paper reproduction phases 1–3)."""
+    return model_output_dir(model_name, base) / EXP1_SUBDIR
 
 
 def phase_output_dir(
@@ -187,8 +187,8 @@ def phase_output_dir(
     phase: str,
     base: pathlib.Path | None = None,
 ) -> pathlib.Path:
-    """Return outputs/<model-slug>/reproduce/<phase>/."""
-    return reproduce_dir(model_name, base) / phase
+    """Return outputs/<model-slug>/exp1/<phase>/."""
+    return exp1_dir(model_name, base) / phase
 
 
 def hyperparameters_to_dict(hparams: Hyperparameters) -> dict[str, Any]:
@@ -301,11 +301,11 @@ class ModelRunConfig:
     def output_dir(self, base: pathlib.Path) -> pathlib.Path:
         return base / self.slug
 
-    def reproduce_dir(self, base: pathlib.Path) -> pathlib.Path:
-        return self.output_dir(base) / REPRODUCE_SUBDIR
+    def exp1_dir(self, base: pathlib.Path) -> pathlib.Path:
+        return self.output_dir(base) / EXP1_SUBDIR
 
     def phase_dir(self, base: pathlib.Path, phase: str) -> pathlib.Path:
-        return self.reproduce_dir(base) / phase
+        return self.exp1_dir(base) / phase
 
     def entropy_neuron_count(self, n_neurons: int) -> int:
         return count_from_pct_and_n(n_neurons, self.entropy_top_pct, self.entropy_top_n)

@@ -1,4 +1,4 @@
-"""Ext 2 weight-projection configuration."""
+"""Exp 2 weight-projection configuration."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from hyperparameters import (
 
 @dataclass
 class Exp2Config:
-    """Minimal Ext 2 settings (static MLP→MLP ρ analysis)."""
+    """Minimal Exp 2 settings (static MLP→MLP ρ analysis)."""
 
     model: str = "gpt2-small"
     family: str = "gpt2"
@@ -51,7 +51,7 @@ def _resolve_path(value: Any, default: pathlib.Path) -> pathlib.Path:
 
 
 def load_exp2_config(config_path: pathlib.Path | str) -> Exp2Config:
-    """Load Ext 2 block from a family YAML; inherit nullspace knobs from hyperparameters."""
+    """Load Exp 2 block from a family YAML; inherit nullspace knobs from hyperparameters."""
     path = pathlib.Path(config_path)
     raw = load_config_yaml(path)
     hp = raw.get("hyperparameters") if isinstance(raw.get("hyperparameters"), dict) else {}

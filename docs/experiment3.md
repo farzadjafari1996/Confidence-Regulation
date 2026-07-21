@@ -48,7 +48,7 @@ LM accuracy on this set: base **38.2%** top-1 / **57.6%** top-5; instruct **35.6
 1. **Collect** — forward LM once; save `X_full` + label fields → `dataset.npz`
 2. **Train** — logistic and MLP probes with random hyperparameter search (no LLM)
 3. **Evaluate** — held-out test Acc / F1 / AUROC
-4. **Ablate** — freeze probe; mean/zero-replace Phase-1 entropy dims; compare to random controls
+4. **Ablate** — freeze probe; mean/zero-replace Exp 1 Phase-1 entropy dims; compare to random controls
 
 ---
 
@@ -103,7 +103,7 @@ Probes discriminate LM correctness far above the LM’s own top-1 rate (~36–38
 
 ## Entropy-neuron feature ablation
 
-Freeze the trained probe. Intervene on **stored activations only** (not a causal LLM ablation). Entropy dims = Phase-1 top-ρ neurons (**k=12**, writer layer 15). **20** matched random controls.
+Freeze the trained probe. Intervene on **stored activations only** (not a causal LLM ablation). Entropy dims = Exp 1 Phase-1 top-ρ neurons (**k=12**, writer layer 15). **20** matched random controls.
 
 - **Necessity:** replace entropy dims with train-set mean (primary) or zero.
 - **Sufficiency:** keep only entropy dims; replace all others.
@@ -120,4 +120,4 @@ Freeze the trained probe. Intervene on **stored activations only** (not a causal
 
 **Takeaway:** entropy dims are **not necessary** for probe performance (Δ≈0). Keeping only them still leaves a usable but much weaker signal, and that drop is **smaller than for most random 12-dim sets** (high sufficiency percentiles)—so they are relatively informative, but the rest of the representation matters more.
 
-> **Correction (feature-subset probes):** intervening on a frozen full-dim probe is not a fair sufficiency test — that probe was trained to use the full activation vector. Train **new** probes with `--features entropy` (Phase-1 dims only) and `--features rest` (all other dims), then compare held-out metrics to the full probe. Outputs land in `logistic_entropy/`, `logistic_rest/`, `mlp_entropy/`, `mlp_rest/`.
+> **Correction (feature-subset probes):** intervening on a frozen full-dim probe is not a fair sufficiency test — that probe was trained to use the full activation vector. Train **new** probes with `--features entropy` (Exp 1 Phase-1 dims only) and `--features rest` (all other dims), then compare held-out metrics to the full probe. Outputs land in `logistic_entropy/`, `logistic_rest/`, `mlp_entropy/`, `mlp_rest/`.

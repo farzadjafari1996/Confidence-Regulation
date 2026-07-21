@@ -10,10 +10,6 @@ import torch
 import tqdm
 from transformer_lens import utils as tl_utils
 
-from exp1.ablation_engine import encode_prompt, forward_cache
-from exp1.data_loaders import _gold_token_id
-from exp1.prompts import format_user_prompt
-from exp1.settings import ModelSpec
 from exp3.data_loaders import get_qa_wikidata_split
 from exp3.dataset_io import (
     dataset_path,
@@ -23,6 +19,13 @@ from exp3.dataset_io import (
     partial_path,
     save_arrays,
     write_collection_meta,
+)
+from exp3.model_utils import (
+    ModelSpec,
+    encode_prompt,
+    format_user_prompt,
+    forward_cache,
+    gold_token_id,
 )
 from exp3.settings import Exp3Config, SplitName
 from gpt2.core import get_entropy
@@ -224,7 +227,7 @@ def run_collect(
         if item_id in skip_ids:
             continue
         if "gold_token_id" not in item:
-            tid = _gold_token_id(tokenizer, item["gold_answer"])
+            tid = gold_token_id(tokenizer, item["gold_answer"])
             if tid is None:
                 continue
             item = dict(item)

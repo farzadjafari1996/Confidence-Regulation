@@ -1,4 +1,4 @@
-# Llama 3.2 1B Instruct — unified run config (Phase 1, 2, 3)
+# Llama 3.2 1B Instruct — unified run config (Exp 1–3)
 # CLI flags override these values when explicitly passed.
 
 model: meta-llama/Llama-3.2-1B-Instruct
@@ -6,7 +6,7 @@ family: llama
 out_dir: outputs
 dtype: null
 
-# Phase 1 & 2 — neuron identification and C4 ablation
+# Exp 1 — neuron identification and C4 ablation
 hyperparameters:
   entropy_top_pct: 0.01
   entropy_top_n: 12
@@ -29,68 +29,18 @@ hyperparameters:
   write_align_mode: both
   use_log2_entropy: false
 
-# Ext 1 — QA ablation (LAMA T-REx + TriviaQA)
-exp1:
-  use_chat_template: true
-  data_dir: data/exp1
-  seed: 42
-  sample_sizes:
-    sanity: 20
-    main: 500
-  calibration:
-    dataset: stas/c4-en-10k
-    data_end: 200
-    max_seq_length: 256
-  ablation:
-    include_random_control: true
-    sanity_modes:
-      - mean_all_entropy
-      - per_neuron_avg
-    main_modes:
-      - mean_all_entropy
-    branches:
-      - te
-      - de_ln
-    chunk_size: 20
-  datasets:
-    lama:
-      hf_path: facebook/lama
-      config: trex
-      filter_single_token_gold: true
-      max_new_tokens: 32
-    triviaqa:
-      hf_path: mandarjoshi/trivia_qa
-      config: rc.nocontext
-      split: validation
-      max_new_tokens: 64
-      prompt_template: "Question: {question}\nAnswer:"
-  decoding:
-    modes:
-      - greedy
-      - sampling
-    greedy:
-      do_sample: false
-    sampling:
-      do_sample: true
-      temperature: 1.0
-      top_p: 1.0
-  runtime:
-    device: cuda
-    dtype: null
-
-# Ext 2 — inter-layer MLP→MLP null-space weight projection (static)
-# SwiGLU reader = stacked [gate|up]. Inherits nullspace knobs from hyperparameters.
+# Exp 2 — inter-layer MLP→MLP null-space weight projection (static)
 exp2:
   seed: 42
   device: cuda
   n_trace_neurons: 6
   n_align_random: 15
 
-# Ext 3 — hallucination probe: last-MLP activations → correct/wrong classifier
+# Exp 3 — hallucination probe: last-MLP activations → correct/wrong classifier
 exp3:
   dataset: qa_wikidata
   # Cloze next-token probe: keep same prompt format as base (chat wraps break completion).
-  use_chat_template: false
+  use_chat_template: true
   seed: 42
   device: cuda
   data_dir: data/exp3
