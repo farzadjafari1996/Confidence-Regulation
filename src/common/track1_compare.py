@@ -40,6 +40,7 @@ for _p in (_src, _src / "common", _src / "experiments", _src / "models"):
         sys.path.insert(0, _s)
 
 from hyperparameters import DEFAULT_OUTPUT_DIR, GPT2_PAPER_ENTROPY_NEURONS, model_slug  # noqa: E402
+from plotly_style import save_plotly_html  # noqa: E402
 
 DEFAULT_MODELS = [
     "gpt2-small",
@@ -398,8 +399,7 @@ def _rows_df(rows: list[dict[str, Any]]) -> pd.DataFrame:
 
 
 def _save_plot(fig: go.Figure, path: pathlib.Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.write_html(str(path))
+    save_plotly_html(fig, path)
     print(f"  saved {path}")
 
 

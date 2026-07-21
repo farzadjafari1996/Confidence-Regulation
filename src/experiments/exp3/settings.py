@@ -11,7 +11,9 @@ from hyperparameters import ROOT, load_config_yaml, model_output_dir
 SplitName = Literal["sanity", "main"]
 LabelName = Literal["top1", "top5", "confident_error", "multiclass", "gold_logprob"]
 ProbeName = Literal["logistic", "mlp"]
-FeatureSet = Literal["all", "entropy", "rest"]
+# Built-ins: all | entropy | rest
+# Matched-k tags: topk_{k} | bottom_k{k} | random_k{k}_d{draw}
+FeatureSet = str
 DatasetName = Literal["qa_wikidata"]
 
 

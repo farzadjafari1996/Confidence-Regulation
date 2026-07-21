@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import torch
 
 from exp2.metrics import cosines_with_basis
+from plotly_style import save_plotly_html
 
 _SAVE_PNG = False
 
@@ -28,9 +29,8 @@ def set_save_png(enabled: bool) -> None:
 
 
 def _save_fig(fig: go.Figure, path: pathlib.Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     html_path = path.with_suffix(".html")
-    fig.write_html(str(html_path))
+    save_plotly_html(fig, html_path)
     print(f"  saved {html_path}")
     if _SAVE_PNG:
         try:
