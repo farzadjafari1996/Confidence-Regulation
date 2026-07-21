@@ -23,6 +23,10 @@ outputs/
 *.feather
 *.pkl
 
+# Local data caches and docs
+data/
+docs/
+
 # Models and caches
 .cache/
 transformers_cache/
