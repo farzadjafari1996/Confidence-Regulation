@@ -99,14 +99,28 @@ python src/models/gpt2/exp3/train_mlp.py --split main --label top1 --device cuda
 python src/models/llama/1b_base/exp3/train_logistic.py --split main --label top1
 python src/models/llama/instruct/exp3/train_logistic.py --split main --label top1
 
+# Step 2b — retrain on entropy-only or rest-only dims (correct sufficiency test)
+python src/models/llama/1b_base/exp3/train_logistic.py --split main --features entropy
+python src/models/llama/1b_base/exp3/train_logistic.py --split main --features rest
+python src/models/llama/1b_base/exp3/train_mlp.py --split main --features entropy --device cuda
+python src/models/llama/1b_base/exp3/train_mlp.py --split main --features rest --device cuda
+
 # Step 3 — held-out test + per-neuron importance
 python src/models/gpt2/exp3/evaluate.py --model logistic --split main
 python src/models/gpt2/exp3/evaluate.py --model mlp --split main
 python src/models/llama/1b_base/exp3/evaluate.py --model logistic --split main
 python src/models/llama/instruct/exp3/evaluate.py --model logistic --split main
+python src/models/llama/1b_base/exp3/evaluate.py --model logistic --features entropy --split main --skip-importance
+python src/models/llama/1b_base/exp3/evaluate.py --model logistic --features rest --split main --skip-importance
+
+# Step 4 — frozen-probe dependence on Phase-1 entropy neurons (auto-runs Phase 1 if missing)
+python src/models/llama/1b_base/exp3/ablate_entropy_features.py --model both --split main --device cuda
+python src/models/llama/instruct/exp3/ablate_entropy_features.py --model both --split main --device cuda
 ```
 
 Outputs: `outputs/<model_slug>/exp3/` (or `exp3_sanity/`). Change `--label` (`top1`, `top5`, `confident_error`, …) without re-collecting.
+
+Step 4 writes `entropy_feature_ablation.json` under each probe dir. It mean-replaces (and zeros) high-ρ dims in stored activations, scores the **frozen** logistic/MLP probes, and compares to matched random controls (necessity + sufficiency). This measures probe feature dependence, not a causal LLM effect. Interpret ΔAUROC via the percentile vs random controls.
 
 For gated models, set `HF_TOKEN` or add `reference_code/ablations/hf_token.txt`.
 

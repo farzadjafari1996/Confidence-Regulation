@@ -12,10 +12,11 @@ import torch
 from sklearn.inspection import permutation_importance as sk_permutation_importance
 
 from exp3.dataset_io import dataset_path, ensure_splits, load_arrays
+from exp3.features import select_features
 from exp3.labels import build_targets
 from exp3.metrics import classification_metrics, regression_metrics
 from exp3.plots import write_exp3_plots
-from exp3.settings import Exp3Config, LabelName, ProbeName, SplitName
+from exp3.settings import Exp3Config, FeatureSet, LabelName, ProbeName, SplitName
 from exp3.train_mlp import ProbeMLP, _predict
 
 
@@ -68,8 +69,9 @@ def _load_logistic_predictor(bundle: dict[str, Any], task: str):
 
 
 def _load_mlp_predictor(ckpt: dict[str, Any], task: str):
+    d_in = int(ckpt.get("d_in", ckpt["d_mlp"]))
     model = ProbeMLP(
-        int(ckpt["d_mlp"]),
+        d_in,
         hidden=int(ckpt["hidden"]),
         n_classes=int(ckpt.get("n_classes", 2)),
         dropout=float(ckpt["dropout"]),
@@ -89,16 +91,28 @@ def _load_mlp_predictor(ckpt: dict[str, Any], task: str):
     return predict_value, _CallableEstimator(predict_value, task)
 
 
+def _feature_indices_from_bundle(bundle: dict[str, Any], d_mlp: int) -> np.ndarray:
+    if "feature_indices" in bundle and bundle["feature_indices"] is not None:
+        return np.asarray(bundle["feature_indices"], dtype=np.int64)
+    feature_set = bundle.get("feature_set", "all")
+    if feature_set == "all":
+        return np.arange(d_mlp, dtype=np.int64)
+    raise ValueError(
+        f"Probe bundle is missing feature_indices for feature_set={feature_set!r}"
+    )
+
+
 def run_evaluate(
     cfg: Exp3Config,
     split_name: SplitName,
     probe: ProbeName,
     *,
     label: LabelName | None = None,
+    features: FeatureSet = "all",
     skip_importance: bool = False,
 ) -> pathlib.Path:
     label = label or cfg.label_default
-    out_dir = cfg.probe_out_dir(split_name, probe)
+    out_dir = cfg.probe_out_dir(split_name, probe, features=features)
     data_dir = cfg.data_out_dir(split_name)
     data_path = dataset_path(data_dir)
     if not data_path.exists():
@@ -111,11 +125,11 @@ def run_evaluate(
         label,
         confident_error_top1_prob=cfg.confident_error_top1_prob,
     )
-    X = np.asarray(data["X_full"], dtype=np.float32)
+    X_full = np.asarray(data["X_full"], dtype=np.float32)
     test_idx = np.asarray(splits["test"], dtype=np.int64)
-    X_test, y_test = X[test_idx], y[test_idx]
 
     bundle: dict[str, Any] | None = None
+    ckpt: dict[str, Any] | None = None
     if probe == "logistic":
         model_path = out_dir / "best_model.joblib"
         if not model_path.exists():
@@ -125,6 +139,9 @@ def run_evaluate(
             print(
                 f"Warning: trained label={bundle.get('label')} but evaluating with label={label}"
             )
+        feat_idx = _feature_indices_from_bundle(bundle, X_full.shape[1])
+        X = select_features(X_full, feat_idx)
+        X_test, y_test = X[test_idx], y[test_idx]
         predict_value, estimator = _load_logistic_predictor(bundle, task)
         pipe = bundle["pipeline"]
         if task == "regression":
@@ -134,6 +151,8 @@ def run_evaluate(
             pred = pipe.predict(X_test)
             prob = pipe.predict_proba(X_test)[:, 1] if task == "binary" else None
             test_metrics = classification_metrics(y_test, pred, prob, task=task)
+        feature_set = bundle.get("feature_set", features)
+        d_in = int(bundle.get("d_in", X.shape[1]))
     else:
         model_path = out_dir / "best_model.pt"
         if not model_path.exists():
@@ -141,6 +160,9 @@ def run_evaluate(
         ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
         if ckpt.get("label") != label:
             print(f"Warning: trained label={ckpt.get('label')} but evaluating with label={label}")
+        feat_idx = _feature_indices_from_bundle(ckpt, X_full.shape[1])
+        X = select_features(X_full, feat_idx)
+        X_test, y_test = X[test_idx], y[test_idx]
         predict_value, estimator = _load_mlp_predictor(ckpt, task)
         pred_or_prob = predict_value(X_test)
         if task == "regression":
@@ -150,11 +172,16 @@ def run_evaluate(
             test_metrics = classification_metrics(y_test, pred, pred_or_prob, task=task)
         else:
             test_metrics = classification_metrics(y_test, pred_or_prob, None, task=task)
+        feature_set = ckpt.get("feature_set", features)
+        d_in = int(ckpt.get("d_in", X.shape[1]))
 
     payload = {
         "probe": probe,
         "label": label,
         "task": task,
+        "feature_set": feature_set,
+        "d_in": d_in,
+        "d_mlp": int(X_full.shape[1]),
         "n_test": int(len(test_idx)),
         "test": test_metrics,
     }
@@ -192,15 +219,23 @@ def run_evaluate(
 
     order = np.argsort(-importances)
     top_k = int(cfg.importance.top_k)
+    # Map subset-local ranks back to original MLP neuron indices when available.
+    local_to_global = feat_idx
     importance_payload = {
         "probe": probe,
         "label": label,
+        "feature_set": feature_set,
         "baseline_note": "sklearn permutation_importance mean decrease in score",
         "top_neurons": [
-            {"neuron_index": int(i), "importance": float(importances[i])}
+            {
+                "neuron_index": int(local_to_global[i]),
+                "subset_index": int(i),
+                "importance": float(importances[i]),
+            }
             for i in order[:top_k]
         ],
         "importances": [float(x) for x in importances],
+        "feature_indices": local_to_global.tolist(),
     }
     imp_path = out_dir / "importance.json"
     imp_path.write_text(json.dumps(importance_payload, indent=2), encoding="utf-8")

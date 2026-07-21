@@ -15,9 +15,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from exp3.dataset_io import dataset_path, ensure_splits, load_arrays
+from exp3.features import resolve_feature_indices, select_features
 from exp3.labels import build_targets
 from exp3.metrics import classification_metrics, regression_metrics
-from exp3.settings import Exp3Config, LabelName, SplitName
+from exp3.settings import Exp3Config, FeatureSet, LabelName, SplitName
 
 
 def _load_xy(
@@ -45,12 +46,29 @@ def run_train_logistic(
     split_name: SplitName,
     *,
     label: LabelName | None = None,
+    features: FeatureSet = "all",
+    phase1_dir: pathlib.Path | None = None,
+    device: str | None = None,
+    skip_phase1: bool = False,
 ) -> pathlib.Path:
     label = label or cfg.label_default
-    out_dir = cfg.probe_out_dir(split_name, "logistic")
+    out_dir = cfg.probe_out_dir(split_name, "logistic", features=features)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    X, y, splits, task, _data = _load_xy(cfg, split_name, label)
+    X_full, y, splits, task, _data = _load_xy(cfg, split_name, label)
+    feat_idx, feat_meta = resolve_feature_indices(
+        cfg,
+        features,
+        d_mlp=X_full.shape[1],
+        phase1_dir=phase1_dir,
+        device=device,
+        skip_phase1=skip_phase1,
+    )
+    X = select_features(X_full, feat_idx)
+    print(
+        f"Logistic features={features}: d_in={X.shape[1]} "
+        f"(from d_mlp={X_full.shape[1]})"
+    )
     train_idx = np.asarray(splits["train"], dtype=np.int64)
     val_idx = np.asarray(splits["val"], dtype=np.int64)
     # Fit search on train; score on val via refit using train+val for final? Plan: tune on val.
@@ -135,7 +153,11 @@ def run_train_logistic(
             "label": label,
             "task": task,
             "best_params": search.best_params_,
-            "d_mlp": int(X.shape[1]),
+            "d_mlp": int(X_full.shape[1]),
+            "d_in": int(X.shape[1]),
+            "feature_set": features,
+            "feature_indices": feat_idx.tolist(),
+            "feature_meta": feat_meta,
             "seed": cfg.seed,
         },
         model_path,
@@ -147,6 +169,9 @@ def run_train_logistic(
     train_metrics = {
         "label": label,
         "task": task,
+        "feature_set": features,
+        "d_in": int(X.shape[1]),
+        "d_mlp": int(X_full.shape[1]),
         "n_train": int(len(train_idx)),
         "n_val": int(len(val_idx)),
         "best_params": {k: _jsonable(v) for k, v in search.best_params_.items()},
@@ -154,6 +179,7 @@ def run_train_logistic(
         "val": val_metrics,
         "class_balance_train": _class_balance(y_train, task),
         "class_balance_val": _class_balance(y_val, task),
+        "feature_meta": feat_meta,
     }
     (out_dir / "train_metrics.json").write_text(
         json.dumps(train_metrics, indent=2), encoding="utf-8"

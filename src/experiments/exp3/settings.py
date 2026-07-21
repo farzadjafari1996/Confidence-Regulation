@@ -11,6 +11,7 @@ from hyperparameters import ROOT, load_config_yaml, model_output_dir
 SplitName = Literal["sanity", "main"]
 LabelName = Literal["top1", "top5", "confident_error", "multiclass", "gold_logprob"]
 ProbeName = Literal["logistic", "mlp"]
+FeatureSet = Literal["all", "entropy", "rest"]
 DatasetName = Literal["qa_wikidata"]
 
 
@@ -84,8 +85,16 @@ class Exp3Config:
     def data_out_dir(self, split_name: SplitName) -> pathlib.Path:
         return self.study_dir(split_name) / "data"
 
-    def probe_out_dir(self, split_name: SplitName, probe: ProbeName) -> pathlib.Path:
-        return self.study_dir(split_name) / probe
+    def probe_out_dir(
+        self,
+        split_name: SplitName,
+        probe: ProbeName,
+        *,
+        features: FeatureSet = "all",
+    ) -> pathlib.Path:
+        from exp3.features import probe_dir_name
+
+        return self.study_dir(split_name) / probe_dir_name(probe, features)
 
 
 def _resolve_path(value: Any, default: pathlib.Path) -> pathlib.Path:

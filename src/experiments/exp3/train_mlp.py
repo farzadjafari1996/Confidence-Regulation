@@ -14,9 +14,10 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from exp3.dataset_io import dataset_path, ensure_splits, load_arrays
+from exp3.features import resolve_feature_indices, select_features
 from exp3.labels import build_targets
 from exp3.metrics import classification_metrics, regression_metrics
-from exp3.settings import Exp3Config, LabelName, SplitName
+from exp3.settings import Exp3Config, FeatureSet, LabelName, SplitName
 from exp3.train_logistic import _class_balance, _load_xy
 
 
@@ -174,14 +175,30 @@ def run_train_mlp(
     split_name: SplitName,
     *,
     label: LabelName | None = None,
+    features: FeatureSet = "all",
     device: str | None = None,
+    phase1_dir: pathlib.Path | None = None,
+    skip_phase1: bool = False,
 ) -> pathlib.Path:
     label = label or cfg.label_default
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    out_dir = cfg.probe_out_dir(split_name, "mlp")
+    out_dir = cfg.probe_out_dir(split_name, "mlp", features=features)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    X, y, splits, task, _data = _load_xy(cfg, split_name, label)
+    X_full, y, splits, task, _data = _load_xy(cfg, split_name, label)
+    feat_idx, feat_meta = resolve_feature_indices(
+        cfg,
+        features,
+        d_mlp=X_full.shape[1],
+        phase1_dir=phase1_dir,
+        device=device,
+        skip_phase1=skip_phase1,
+    )
+    X = select_features(X_full, feat_idx)
+    print(
+        f"MLP features={features}: d_in={X.shape[1]} "
+        f"(from d_mlp={X_full.shape[1]}) device={device}"
+    )
     train_idx = np.asarray(splits["train"], dtype=np.int64)
     val_idx = np.asarray(splits["val"], dtype=np.int64)
     X_train, y_train = X[train_idx], y[train_idx]
@@ -292,7 +309,11 @@ def run_train_mlp(
         "std": std,
         "label": label,
         "task": task,
-        "d_mlp": int(X.shape[1]),
+        "d_mlp": int(X_full.shape[1]),
+        "d_in": int(X.shape[1]),
+        "feature_set": features,
+        "feature_indices": feat_idx.tolist(),
+        "feature_meta": feat_meta,
         "hidden": best_bundle["hidden"],
         "dropout": best_bundle["dropout"],
         "n_classes": best_bundle["n_classes"],
@@ -306,6 +327,9 @@ def run_train_mlp(
     train_metrics = {
         "label": label,
         "task": task,
+        "feature_set": features,
+        "d_in": int(X.shape[1]),
+        "d_mlp": int(X_full.shape[1]),
         "n_train": int(len(train_idx)),
         "n_val": int(len(val_idx)),
         "best_params": best_bundle["params"],
@@ -314,6 +338,8 @@ def run_train_mlp(
         "class_balance_train": _class_balance(y_train, task),
         "class_balance_val": _class_balance(y_val, task),
         "mlp_settings": asdict(cfg.mlp),
+        "feature_meta": feat_meta,
+        "device": device,
     }
     (out_dir / "train_metrics.json").write_text(
         json.dumps(train_metrics, indent=2), encoding="utf-8"
