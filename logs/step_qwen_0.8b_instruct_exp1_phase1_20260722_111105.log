@@ -1,0 +1,27 @@
+
+========================================================================
+[2026-07-22 11:11:05] START model=qwen_0.8b_instruct step=exp1_phase1 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_instruct\exp1\phase1_identify.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_instruct_exp1_phase1_20260722_111105.log
+========================================================================
+
+============================================================
+Phase 1 — Qwen/Qwen3.5-0.8B on cuda
+============================================================
+Loading weights:   0%|          | 0/320 [00:00<?, ?it/s]Loading weights:   0%|          | 1/320 [00:00<04:32,  1.17it/s]Loading weights: 100%|##########| 320/320 [00:00<00:00, 337.60it/s]
+  layers=24 d_mlp=3584 d_model=1024 norm=RMSPre udark_start=-10
+  static metrics: logit_var (chunked matmul)...
+  static metrics: SVD(W_U)...
+  static metrics: done
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1\static_neuron_metrics.csv
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1\top1pct_rho_neurons.json
+  Fig 2d: singular values + neuron alignment
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1\fig2d_singular_values.html
+  entropy vs random unembed alignment
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1\entropy_vs_random_unembed_alignment.html
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1\entropy_vs_random_unembed_alignment_means.html
+  Fig 2a: Norm vs LogitVar
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1\fig2a_norm_vs_logitvar.html
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1\summary.json
+Phase 1 done: 10 neurons -> D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\qwen_3.5_0.8B_instruct\exp1\phase1
+[2026-07-22 11:11:35] END model=qwen_0.8b_instruct step=exp1_phase1 exit=0 elapsed_s=30

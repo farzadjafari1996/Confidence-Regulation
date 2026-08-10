@@ -1,0 +1,58 @@
+[2026-07-22 11:01:05] queue start: 8 steps, device=cuda, python=D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe
+
+========================================================================
+[2026-07-22 11:01:05] START model=qwen_0.8b_base step=exp1_phase1 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_base\exp1\phase1_identify.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_base_exp1_phase1_20260722_110105.log
+========================================================================
+[2026-07-22 11:01:35] END model=qwen_0.8b_base step=exp1_phase1 exit=0 elapsed_s=30
+
+========================================================================
+[2026-07-22 11:01:35] START model=qwen_0.8b_base step=exp1_phase2 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_base\exp1\phase2_ablation.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_base_exp1_phase2_20260722_110135.log
+========================================================================
+[2026-07-22 11:05:35] END model=qwen_0.8b_base step=exp1_phase2 exit=0 elapsed_s=240
+
+========================================================================
+[2026-07-22 11:05:35] START model=qwen_0.8b_base step=exp1_phase3 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_base\exp1\phase3_distribution.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_base_exp1_phase3_20260722_110535.log
+========================================================================
+[2026-07-22 11:10:35] END model=qwen_0.8b_base step=exp1_phase3 exit=0 elapsed_s=300
+
+========================================================================
+[2026-07-22 11:10:35] START model=qwen_0.8b_base step=exp2 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_base\exp2\weight_projection.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_base_exp2_20260722_111035.log
+========================================================================
+[2026-07-22 11:11:05] END model=qwen_0.8b_base step=exp2 exit=0 elapsed_s=30
+
+========================================================================
+[2026-07-22 11:11:05] START model=qwen_0.8b_instruct step=exp1_phase1 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_instruct\exp1\phase1_identify.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_instruct_exp1_phase1_20260722_111105.log
+========================================================================
+[2026-07-22 11:11:35] END model=qwen_0.8b_instruct step=exp1_phase1 exit=0 elapsed_s=30
+
+========================================================================
+[2026-07-22 11:11:35] START model=qwen_0.8b_instruct step=exp1_phase2 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_instruct\exp1\phase2_ablation.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_instruct_exp1_phase2_20260722_111135.log
+========================================================================
+[2026-07-22 11:15:35] END model=qwen_0.8b_instruct step=exp1_phase2 exit=0 elapsed_s=240
+
+========================================================================
+[2026-07-22 11:15:35] START model=qwen_0.8b_instruct step=exp1_phase3 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_instruct\exp1\phase3_distribution.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_instruct_exp1_phase3_20260722_111535.log
+========================================================================
+[2026-07-22 11:20:35] END model=qwen_0.8b_instruct step=exp1_phase3 exit=0 elapsed_s=300
+
+========================================================================
+[2026-07-22 11:20:35] START model=qwen_0.8b_instruct step=exp2 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\qwen\0.8b_instruct\exp2\weight_projection.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_qwen_0.8b_instruct_exp2_20260722_112035.log
+========================================================================
+[2026-07-22 11:21:05] END model=qwen_0.8b_instruct step=exp2 exit=0 elapsed_s=30
+[2026-07-22 11:21:05] queue finished. completed=8 skipped=0 failed=0

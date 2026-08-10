@@ -1,0 +1,27 @@
+
+========================================================================
+[2026-07-22 01:42:21] START model=llama_1b_instruct step=exp1_phase1 attempt=1/2
+cmd: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\.venv\Scripts\python.exe D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\src\models\llama\instruct\exp1\phase1_identify.py --device cuda
+log: D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\logs\step_llama_1b_instruct_exp1_phase1_20260722_014221.log
+========================================================================
+
+============================================================
+Phase 1 — meta-llama/Llama-3.2-1B-Instruct on cuda
+============================================================
+Loading weights:   0%|          | 0/146 [00:00<?, ?it/s]Loading weights:   1%|          | 1/146 [00:00<02:11,  1.10it/s]Loading weights:  76%|#######6  | 111/146 [00:01<00:00, 147.91it/s]Loading weights: 100%|##########| 146/146 [00:01<00:00, 121.84it/s]
+  layers=16 d_mlp=8192 d_model=2048 norm=RMSPre udark_start=-20
+  static metrics: logit_var (chunked matmul)...
+  static metrics: SVD(W_U)...
+  static metrics: done
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1\static_neuron_metrics.csv
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1\top1pct_rho_neurons.json
+  Fig 2d: singular values + neuron alignment
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1\fig2d_singular_values.html
+  entropy vs random unembed alignment
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1\entropy_vs_random_unembed_alignment.html
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1\entropy_vs_random_unembed_alignment_means.html
+  Fig 2a: Norm vs LogitVar
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1\fig2a_norm_vs_logitvar.html
+  saved D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1\summary.json
+Phase 1 done: 12 neurons -> D:\university\HPI\Sem 2\Trends in AI and LLMs\confidence_regulation\outputs\llama_3.2_1B_instruct\exp1\phase1
+[2026-07-22 01:42:52] END model=llama_1b_instruct step=exp1_phase1 exit=0 elapsed_s=30
