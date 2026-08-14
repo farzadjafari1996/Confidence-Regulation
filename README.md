@@ -24,7 +24,7 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | `RESEARCH_ROADMAP.md` | Study and reproduction plan |
 | `base_paper.pdf` | Local copy of the paper |
 | `reference_code/` | Upstream reference ([GitHub](https://github.com/bpwu1/confidence-regulation-neurons)) |
-| `src/common/` | Shared utilities (`hyperparameters`, `run_config`, compare) |
+| `src/common/` | Shared utilities (`hyperparameters`, `run_config`, plotting) |
 | `src/experiments/exp1/` | Exp 1 package marker (runners under `src/models/*/exp1/`) |
 | `src/experiments/exp2/` | Exp 2 shared library (weight projection) |
 | `src/experiments/exp3/` | Exp 3 shared library (hallucination probe) |
@@ -78,7 +78,6 @@ outputs/
   llama_3.2_1B_base/   …
   llama_3.2_1B_instruct/ …
   qwen_3.5_0.8B_base/  …
-  comparison/          # cross-model aggregates
 ```
 
 ## Quick start
