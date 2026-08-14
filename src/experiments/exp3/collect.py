@@ -29,7 +29,16 @@ from exp3.model_utils import (
 )
 from exp3.settings import Exp3Config, SplitName
 from gpt2.core import get_entropy
-from hyperparameters import GPT2_HPARAMS, LLAMA_HPARAMS, ModelRunConfig, model_slug, qwen_hparams_for_model
+from hyperparameters import (
+    GPT2_HPARAMS,
+    LLAMA_HPARAMS,
+    GEMMA_HPARAMS,
+    SMOLLM_HPARAMS,
+    ModelRunConfig,
+    model_slug,
+    pythia_hparams_for_model,
+    qwen_hparams_for_model,
+)
 
 
 def _model_spec(cfg: Exp3Config) -> ModelSpec:
@@ -47,6 +56,12 @@ def _hparams_for_family(cfg: Exp3Config):
         return LLAMA_HPARAMS
     if cfg.family == "qwen":
         return qwen_hparams_for_model(cfg.model)
+    if cfg.family == "pythia":
+        return pythia_hparams_for_model(cfg.model)
+    if cfg.family == "smollm":
+        return SMOLLM_HPARAMS
+    if cfg.family == "gemma":
+        return GEMMA_HPARAMS
     raise ValueError(f"Unsupported Exp3 family: {cfg.family}")
 
 
@@ -63,6 +78,18 @@ def _load_model(cfg: Exp3Config, run_cfg: ModelRunConfig, device: str):
         from qwen.load import load_qwen
 
         return load_qwen(run_cfg, device)
+    if cfg.family == "pythia":
+        from pythia.load import load_pythia
+
+        return load_pythia(run_cfg, device)
+    if cfg.family == "smollm":
+        from smollm.load import load_smollm
+
+        return load_smollm(run_cfg, device)
+    if cfg.family == "gemma":
+        from gemma.load import load_gemma
+
+        return load_gemma(run_cfg, device)
     raise ValueError(f"Unsupported Exp3 family: {cfg.family}")
 
 

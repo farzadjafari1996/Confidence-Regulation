@@ -6,7 +6,7 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 
 | Experiment | Meaning | Layout |
 |---|---|---|
-| **Exp 1** | Paper reproduction (plots & claims) | `exp1/phase1`, `exp1/phase2`, `exp1/phase3` |
+| **Exp 1** | Paper reproduction (plots & claims) | `exp1/phase1`, `exp1/phase2` |
 | **Exp 2** | Layer-by-layer null-space evaluation | `exp2/` (no phases) |
 | **Exp 3** | Hallucination probes | `exp3/` (pipeline steps, no phases) |
 
@@ -16,7 +16,6 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 |---|---|
 | `phase1` | Static entropy-neuron identification (ρ ranking) |
 | `phase2` | Mean ablation (TE / DE_LN, ΔH, prediction change) |
-| `phase3` | Softmax distribution shift after ablation (JS / affine; formerly `phase2b`) |
 
 ## Layout
 
@@ -32,18 +31,48 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | `data/exp3/` | Exp 3 item cache (BIG-bench `qa_wikidata`) |
 | `src/models/gpt2/exp1/phase1_identify.py` | Exp 1 Phase 1 |
 | `src/models/gpt2/exp1/phase2_ablation.py` | Exp 1 Phase 2 |
-| `src/models/gpt2/exp1/phase3_distribution.py` | Exp 1 Phase 3 |
 | `src/models/gpt2/exp2/weight_projection.py` | Exp 2 |
 | `src/models/gpt2/exp3/` | Exp 3 collect / train / evaluate |
 | `src/models/llama/` | Llama 3.2 loaders + `1b_base/` / `instruct/` runners |
 | `src/models/qwen/` | Qwen 3.5 loaders + size/variant runners |
+| `src/models/pythia/` | Pythia loaders + `410m/` / `1.4b/` runners |
+| `src/models/smollm/` | SmolLM2 loaders + `1.7b_base/` / `1.7b_instruct/` runners |
+| `src/models/gemma/` | Gemma-2 loaders + `2b_base/` / `2b_it/` runners |
+| `config/` | Per-model YAML run configs (Exp 1–3 hyperparameters) |
+
+## Models & configs
+
+Each model variant has a matching config under `config/` and entrypoint scripts under `src/models/<family>/<variant>/`. CLI flags override YAML values.
+
+| Model variant | Config | Exp 1 | Exp 2 | Exp 3 |
+|---|---|:---:|:---:|:---:|
+| gpt2 | `config/gpt2.yaml` | ✓ | ✓ | partial |
+| llama 1B base | `config/llama.yaml` | ✓ | ✓ | ✓ |
+| llama 1B instruct | `config/llama_instruct.yaml` | ✓ | ✓ | ✓ |
+| qwen 0.8B base / instruct | `config/qwen3_0.8b.yaml` | ✓ | ✓ | — |
+| qwen 2B base / instruct | `config/qwen3_2b.yaml` | ✓ | ✓ | — |
+| pythia 410m | `config/pythia_410m.yaml` | ✓ | ✓ | ✓ |
+| pythia 1.4b | `config/pythia_1.4b.yaml` | ✓ | ✓ | ✓ |
+| smollm 1.7B base | `config/smollm2_1.7b.yaml` | ✓ | ✓ | ✓ |
+| smollm 1.7B instruct | `config/smollm2_1.7b_instruct.yaml` | ✓ | ✓ | ✓ |
+| gemma 2B base | `config/gemma2_2b.yaml` | ✓ | ✓ | ✓ |
+| gemma 2B instruct | `config/gemma2_2b_it.yaml` | ✓ | ✓ | ✓ |
+
+Example (pythia 410m, Exp 1):
+
+```powershell
+python src/models/pythia/410m/exp1/phase1_identify.py --device cuda
+python src/models/pythia/410m/exp1/phase2_ablation.py --device cuda
+python src/models/pythia/410m/exp2/weight_projection.py --device cuda
+python src/models/pythia/410m/exp3/collect.py --device cuda --split sanity
+```
 
 ## Outputs layout
 
 ```
 outputs/
   gpt2/
-    exp1/{phase1,phase2,phase3}/
+    exp1/{phase1,phase2}/
     exp2/
     exp3/  exp3_sanity/
   llama_3.2_1B_base/   …
@@ -64,10 +93,9 @@ pip install "torch>=2.6.0,<2.7.0" --index-url https://download.pytorch.org/whl/c
 pip install -r requirements.txt
 python src/models/gpt2/exp1/phase1_identify.py --device cuda
 python src/models/gpt2/exp1/phase2_ablation.py --device cuda
-python src/models/gpt2/exp1/phase3_distribution.py --device cuda
 ```
 
-Outputs: `outputs/gpt2/exp1/phase1/` → `phase2/` → `phase3/`; extensions under `exp2/`, `exp3/`
+Outputs: `outputs/gpt2/exp1/phase1/` → `phase2/`; extensions under `exp2/`, `exp3/`
 
 Exp 2 inter-layer weight projection (static; after optional Exp 1 Phase 1 for W_U sanity):
 

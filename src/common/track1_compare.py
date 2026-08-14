@@ -1,10 +1,10 @@
 """
 Full cross-model comparison across Exp 1 Phase 1 / 2 / 3 (roadmap 1C).
 
-Reads artifacts under outputs/<model-slug>/exp1/{phase1,phase2,phase3}/
+Reads artifacts under outputs/<model-slug>/exp1/{phase1,phase2}/
 and writes aggregated tables + Plotly diagrams to outputs/comparison/.
 
-Usage (after running exp1 phase 1 + 2 + 3 for each model):
+Usage (after running exp1 phase 1 + 2 for each model):
   python src/common/track1_compare.py
   python src/common/track1_compare.py --models gpt2-small meta-llama/Llama-3.2-1B
   python src/common/track1_compare.py --outputs-dir outputs --comparison-dir outputs/comparison
@@ -127,40 +127,6 @@ def _display_name(model_name: str) -> str:
     return DISPLAY_NAMES.get(model_name, model_name.split("/")[-1])
 
 
-def _enrich_phase3_from_feather(
-    phase3_dir: pathlib.Path,
-    entropy_neurons: list[str],
-) -> dict[str, float | None]:
-    """Optional extra Exp 1 Phase 3 aggregates from distribution_metrics.feather (TE columns)."""
-    feather = phase3_dir / "distribution_metrics.feather"
-    if not feather.exists() or not entropy_neurons:
-        return {}
-
-    df = pd.read_feather(feather)
-    if "component_name" not in df.columns or "js_divergence_te" not in df.columns:
-        return {}
-
-    ent = df[df["component_name"].isin(entropy_neurons)]
-    rnd = df[~df["component_name"].isin(entropy_neurons)]
-    out: dict[str, float | None] = {}
-
-    def _mean(frame: pd.DataFrame, col: str) -> float | None:
-        if col not in frame.columns or frame.empty:
-            return None
-        return float(frame[col].mean())
-
-    out["mean_kl_entropy_te"] = _mean(ent, "kl_divergence_te")
-    out["mean_kl_random_te"] = _mean(rnd, "kl_divergence_te")
-    out["mean_argmax_flip_entropy_te"] = _mean(ent, "argmax_flip_te")
-    out["mean_argmax_flip_random_te"] = _mean(rnd, "argmax_flip_te")
-    out["mean_spearman_entropy_te"] = _mean(ent, "spearman_rho_te")
-    out["mean_top5_jaccard_entropy_te"] = _mean(ent, "top5_jaccard_te")
-    if "js_divergence_de_ln" in df.columns:
-        out["mean_js_entropy_de_ln"] = _mean(ent, "js_divergence_de_ln")
-        out["mean_js_random_de_ln"] = _mean(rnd, "js_divergence_de_ln")
-    return out
-
-
 def load_model_track1_metrics(
     model_name: str,
     outputs_dir: pathlib.Path,
@@ -169,11 +135,9 @@ def load_model_track1_metrics(
     exp1_root = outputs_dir / slug / "exp1"
     phase1_dir = exp1_root / "phase1"
     phase2_dir = exp1_root / "phase2"
-    phase3_dir = exp1_root / "phase3"
 
     phase1 = _read_json(phase1_dir / "summary.json")
     phase2 = _read_json(phase2_dir / "summary.json")
-    phase3 = _optional_json(phase3_dir / "summary.json")
 
     rho_csv = phase2_dir / "rho_vs_ln_fraction.csv"
     rho_df = pd.read_csv(rho_csv) if rho_csv.exists() else None
@@ -230,12 +194,10 @@ def load_model_track1_metrics(
         "mean_abs_de_ln_random": random_set.get("mean_abs_de_ln"),
         "te_over_de_entropy": te_de_ratio_entropy,
         "te_over_de_random": te_de_ratio_random,
-        "phase3_ran": phase3 is not None,
         "paper_neuron_overlap_gpt2": paper_overlap,
         "paper_neuron_overlap_list": paper_overlap_neurons,
         "phase1_dir": str(phase1_dir),
         "phase2_dir": str(phase2_dir),
-        "phase3_dir": str(phase3_dir),
     }
 
     if rho_df is not None and "is_entropy" in rho_df.columns:
@@ -243,25 +205,6 @@ def load_model_track1_metrics(
         rnd_rho = rho_df[rho_df["is_entropy"] == False]  # noqa: E712
         row["mean_rho_entropy_ablated"] = float(ent_rho["rho"].mean()) if len(ent_rho) else None
         row["mean_rho_random_ablated"] = float(rnd_rho["rho"].mean()) if len(rnd_rho) else None
-
-    if phase3 is not None:
-        js_e = phase3.get("mean_js_entropy")
-        js_r = phase3.get("mean_js_random")
-        aff = phase3.get("mean_affine_r2_entropy")
-        const = phase3.get("mean_constant_shift_r2_entropy")
-        row["phase3_branch"] = phase3.get("branch_primary")
-        row["mean_js_entropy"] = js_e
-        row["mean_js_random"] = js_r
-        row["js_entropy_over_random"] = (
-            float(js_e / js_r) if js_e is not None and js_r and js_r > 0 else None
-        )
-        row["mean_affine_r2_entropy"] = aff
-        row["mean_constant_shift_r2_entropy"] = const
-        row["mean_shape_change_entropy"] = (
-            float(1.0 - const) if const is not None else None
-        )
-        row["n_tokens_phase3"] = phase3.get("n_tokens")
-        row.update(_enrich_phase3_from_feather(phase3_dir, entropy_neurons))
 
     return row
 
@@ -306,16 +249,6 @@ def evaluate_paper_claims(row: dict[str, Any]) -> dict[str, bool | str]:
             if row.get("mean_ln_mediated_fraction") is None
             else row["mean_ln_mediated_fraction"] >= 0.3
         ),
-        "phase3_js_entropy_gt_random": (
-            None
-            if row.get("mean_js_entropy") is None or row.get("mean_js_random") is None
-            else row["mean_js_entropy"] > row["mean_js_random"]
-        ),
-        "phase3_near_affine_shift": (
-            None
-            if row.get("mean_affine_r2_entropy") is None
-            else row["mean_affine_r2_entropy"] >= 0.999
-        ),
     }
 
     if row.get("model") == "gpt2-small" and row.get("paper_neuron_overlap_gpt2") is not None:
@@ -352,14 +285,6 @@ def build_comparison_table(rows: list[dict[str, Any]]) -> pd.DataFrame:
         "mean_abs_delta_h_entropy",
         "mean_pred_change_rate_entropy",
         "te_over_de_random",
-        "mean_js_entropy",
-        "mean_js_random",
-        "js_entropy_over_random",
-        "mean_affine_r2_entropy",
-        "mean_constant_shift_r2_entropy",
-        "mean_shape_change_entropy",
-        "mean_kl_entropy_te",
-        "mean_argmax_flip_entropy_te",
         "paper_neuron_overlap_gpt2",
     ]
     df = pd.DataFrame(rows)
@@ -529,35 +454,8 @@ def write_comparison_plots(rows: list[dict[str, Any]], plots_dir: pathlib.Path) 
         "Pred change rate",
         _track("phase2_pred_change.html"),
     )
-    _grouped_bars(
-        df,
-        [
-            ("mean_js_entropy", "JS entropy neurons"),
-            ("mean_js_random", "JS random controls"),
-        ],
-        "Exp 1 Phase 3 - Jensen-Shannon divergence (TE)",
-        "Mean JS divergence",
-        _track("phase3_js_entropy_vs_random.html"),
-    )
-    _bar_by_model(
-        df,
-        "js_entropy_over_random",
-        "Exp 1 Phase 3 - JS(entropy) / JS(random)",
-        "JS ratio",
-        _track("phase3_js_ratio.html"),
-    )
-    _grouped_bars(
-        df,
-        [
-            ("mean_affine_r2_entropy", "Affine RÂ²"),
-            ("mean_constant_shift_r2_entropy", "Constant-shift RÂ²"),
-        ],
-        "Exp 1 Phase 3 - softmax shift fit quality (entropy neurons)",
-        "RÂ²",
-        _track("phase3_affine_vs_constant_r2.html"),
-    )
 
-    # Scatter: Ï vs LN-mediated fraction
+    # Scatter: ρ vs LN-mediated fraction
     scatter_df = df.dropna(subset=["mean_rho_selected", "mean_ln_mediated_fraction"])
     if not scatter_df.empty:
         fig = px.scatter(
@@ -578,29 +476,6 @@ def write_comparison_plots(rows: list[dict[str, Any]], plots_dir: pathlib.Path) 
         fig.update_layout(width=720, height=480, title_font_size=15)
         _save_plot(fig, _track("scatter_rho_vs_ln_fraction.html"))
 
-    # Scatter: |ΔH| vs JS (phase2 x phase3)
-    scatter2 = df.dropna(subset=["mean_abs_delta_h_entropy", "mean_js_entropy"])
-    if not scatter2.empty:
-        fig = px.scatter(
-            scatter2,
-            x="mean_abs_delta_h_entropy",
-            y="mean_js_entropy",
-            color="family",
-            text="display_name",
-            color_discrete_map=FAMILY_COLORS,
-            title="Phase 2 |DeltaH| vs Exp 1 Phase 3 JS (entropy neurons)",
-            labels={
-                "mean_abs_delta_h_entropy": "Mean |DeltaH| (Phase 2)",
-                "mean_js_entropy": "Mean JS (Exp 1 Phase 3 TE)",
-                "family": "Family",
-            },
-            log_x=True,
-            log_y=True,
-        )
-        fig.update_traces(textposition="top center", marker=dict(size=12))
-        fig.update_layout(width=720, height=480, title_font_size=15)
-        _save_plot(fig, _track("scatter_deltaH_vs_js.html"))
-
     # Base vs instruct paired deltas
     pairs = [
         ("meta-llama/Llama-3.2-1B", "meta-llama/Llama-3.2-1B-Instruct", "Llama 1B"),
@@ -619,7 +494,6 @@ def write_comparison_plots(rows: list[dict[str, Any]], plots_dir: pathlib.Path) 
             ("mean_abs_te_entropy", "|TE|"),
             ("mean_abs_delta_h_entropy", "|DeltaH|"),
             ("mean_pred_change_rate_entropy", "Pred change"),
-            ("mean_js_entropy", "JS (TE)"),
         ]:
             b, i = base.get(metric), inst.get(metric)
             if b is None or i is None:
@@ -658,7 +532,6 @@ def write_comparison_plots(rows: list[dict[str, Any]], plots_dir: pathlib.Path) 
             "mean_rho_selected",
             "mean_ln_mediated_fraction",
             "te_over_de_entropy",
-            "mean_js_entropy",
         ]
     )
     if not overview.empty:
@@ -669,7 +542,7 @@ def write_comparison_plots(rows: list[dict[str, Any]], plots_dir: pathlib.Path) 
                 "Mean Ï (Phase 1)",
                 "LN-mediated fraction (Phase 2)",
                 "TE / DE_LN (Phase 2)",
-                "JS entropy neurons (Exp 1 Phase 3)",
+                "Mean |DeltaH| (Phase 2)",
             ),
             vertical_spacing=0.16,
             horizontal_spacing=0.10,
@@ -680,7 +553,7 @@ def write_comparison_plots(rows: list[dict[str, Any]], plots_dir: pathlib.Path) 
             (1, 1, overview["mean_rho_selected"].tolist()),
             (1, 2, overview["mean_ln_mediated_fraction"].tolist()),
             (2, 1, overview["te_over_de_entropy"].tolist()),
-            (2, 2, overview["mean_js_entropy"].tolist()),
+            (2, 2, overview["mean_abs_delta_h_entropy"].tolist()),
         ]
         for r, c, vals in panels:
             fig.add_trace(
@@ -691,7 +564,7 @@ def write_comparison_plots(rows: list[dict[str, Any]], plots_dir: pathlib.Path) 
         fig.update_layout(
             width=1000,
             height=700,
-            title_text="Cross-model overview - Exp 1 Phase 1 / 2 / 3",
+            title_text="Cross-model overview - Exp 1 Phase 1 / 2",
             title_font_size=16,
         )
         fig.update_xaxes(tickangle=-30)
@@ -731,19 +604,6 @@ def _findings_bullets(rows: list[dict[str, Any]]) -> list[str]:
             "regime, not paper-style entropy-neuron mediation."
         )
 
-    p2b = [r for r in rows if r.get("mean_js_entropy") is not None]
-    if p2b:
-        sep = [
-            r
-            for r in p2b
-            if r.get("js_entropy_over_random") is not None and r["js_entropy_over_random"] > 1.5
-        ]
-        bullets.append(
-            f"**Exp 1 Phase 3:** all {len(p2b)} models keep high affine RÂ² (â‰¥0.999) after ablation; "
-            f"{len(sep)}/{len(p2b)} show JS(entropy) â‰« JS(random) (ratio > 1.5), "
-            "consistent with a mostly shift/scale change of the softmax."
-        )
-
     llama = [r for r in rows if r.get("family") == "Llama"]
     if llama:
         mean_pred = sum(float(r["mean_pred_change_rate_entropy"] or 0) for r in llama) / len(llama)
@@ -775,18 +635,14 @@ def write_markdown_report(
             "te_over_de_entropy",
             "mean_abs_delta_h_entropy",
             "mean_pred_change_rate_entropy",
-            "mean_js_entropy",
-            "js_entropy_over_random",
-            "mean_affine_r2_entropy",
         ]
         if c in table.columns
     ]
 
     lines = [
-        "# Full model comparison - Exp 1 Phase 1 / 2 / 3",
+        "# Full model comparison - Exp 1 Phase 1 / 2",
         "",
-        "Aggregated from `outputs/<model>/exp1/{phase1,phase2,phase3}` summaries "
-        "(and optional Exp 1 Phase 3 feather metrics).",
+        "Aggregated from `outputs/<model>/exp1/{phase1,phase2}` summaries.",
         "",
         "## Key findings",
         "",
@@ -851,19 +707,6 @@ def write_markdown_report(
                 "",
             ]
         )
-
-    lines.extend(
-        [
-            "## How to read Exp 1 Phase 3",
-            "",
-            "- **JS divergence**: overall softmax change under ablation (entropy vs random).",
-            "- **Affine / constant-shift RÂ²**: whether the post-ablation distribution is "
-            "mostly a shift/scale of the baseline (paper-style confidence regulation).",
-            "- GPT-2/Llama Exp 1 Phase 3 summaries use branch `te`; Qwen runs used `both` "
-            "(TE + DE_LN). Cross-model plots use TE columns for fairness.",
-            "",
-        ]
-    )
 
     out_path.write_text("\n".join(lines), encoding="utf-8")
 

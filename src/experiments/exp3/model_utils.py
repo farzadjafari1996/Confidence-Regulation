@@ -7,7 +7,7 @@ from typing import Literal
 
 import torch
 
-Family = Literal["gpt2", "llama", "qwen"]
+Family = Literal["gpt2", "llama", "qwen", "pythia", "smollm", "gemma"]
 
 
 @dataclass

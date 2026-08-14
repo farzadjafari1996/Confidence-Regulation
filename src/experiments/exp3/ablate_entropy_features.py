@@ -87,6 +87,21 @@ def ensure_phase1(
         from qwen.load import load_qwen
 
         run_phase1_identify(model_cfg, out_dir, device=device, load_model_fn=load_qwen)
+    elif family == "pythia":
+        from pythia.core import run_phase1_identify
+        from pythia.load import load_pythia
+
+        run_phase1_identify(model_cfg, out_dir, device=device, load_model_fn=load_pythia)
+    elif family == "smollm":
+        from smollm.core import run_phase1_identify
+        from smollm.load import load_smollm
+
+        run_phase1_identify(model_cfg, out_dir, device=device, load_model_fn=load_smollm)
+    elif family == "gemma":
+        from gemma.core import run_phase1_identify
+        from gemma.load import load_gemma
+
+        run_phase1_identify(model_cfg, out_dir, device=device, load_model_fn=load_gemma)
     else:
         raise ValueError(f"Unsupported family for auto Phase 1: {family!r}")
 

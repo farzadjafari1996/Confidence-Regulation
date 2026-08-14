@@ -155,7 +155,7 @@ def run_exp2(
 
     from hyperparameters import Family, ModelRunConfig, load_run_settings
 
-    family: Family = cfg.family if cfg.family in ("gpt2", "llama", "qwen") else "gpt2"
+    family: Family = cfg.family if cfg.family in ("gpt2", "llama", "qwen", "pythia", "smollm", "gemma") else "gpt2"
     settings = load_run_settings(cfg.config_path, family)
     run_cfg = ModelRunConfig.from_hparams(cfg.model, settings["hparams"], dtype=cfg.dtype)
 

@@ -24,6 +24,9 @@ DEFAULT_DATASET = "stas/c4-en-10k"
 GPT2_DEFAULT_MODEL = "gpt2-small"
 LLAMA_DEFAULT_MODEL = "meta-llama/Llama-3.2-1B"
 QWEN_DEFAULT_MODEL = "Qwen/Qwen3.5-0.8B-Base"
+PYTHIA_DEFAULT_MODEL = "EleutherAI/pythia-410m"
+SMOLLM_DEFAULT_MODEL = "HuggingFaceTB/SmolLM2-1.7B"
+GEMMA_DEFAULT_MODEL = "google/gemma-2-2b"
 
 GPT2_PAPER_ENTROPY_NEURONS = [
     "11.584",
@@ -120,20 +123,69 @@ QWEN_2B_HPARAMS = Hyperparameters(
 
 QWEN_HPARAMS = QWEN_08B_HPARAMS
 
+# Pythia (LayerNorm, TransformerLens) — nullspace ~1% of d_model
+PYTHIA_410M_HPARAMS = Hyperparameters(
+    entropy_top_n=12,
+    nullspace_top_pct=0.01,
+    nullspace_k=10,  # d_model=1024
+    k=6,
+    data_end=400,
+    n_random=90,
+)
+
+PYTHIA_14B_HPARAMS = Hyperparameters(
+    entropy_top_n=12,
+    nullspace_top_pct=0.01,
+    nullspace_k=20,  # d_model=2048
+    k=4,
+    data_end=400,
+    n_random=90,
+)
+
+PYTHIA_HPARAMS = PYTHIA_410M_HPARAMS
+
+# SmolLM2 (RMSNorm + SwiGLU, Llama-like HF) — d_model=2048
+SMOLLM_HPARAMS = Hyperparameters(
+    entropy_top_n=12,
+    nullspace_top_pct=0.01,
+    nullspace_k=20,
+    k=4,
+    data_end=400,
+    n_random=90,
+    chunk_size=10,
+)
+
+# Gemma-2 2B (RMSNorm + GeGLU) — d_model=2304
+GEMMA_HPARAMS = Hyperparameters(
+    entropy_top_n=12,
+    nullspace_top_pct=0.01,
+    nullspace_k=23,
+    k=4,
+    data_end=400,
+    n_random=90,
+    chunk_size=5,
+)
+
 HP_FIELD_NAMES = {f.name for f in fields(Hyperparameters)}
 RUN_SETTING_KEYS = {"model", "dtype", "out_dir"}
-Family = Literal["gpt2", "llama", "qwen"]
+Family = Literal["gpt2", "llama", "qwen", "pythia", "smollm", "gemma"]
 
 _FAMILY_BASE: dict[Family, Hyperparameters] = {
     "gpt2": GPT2_HPARAMS,
     "llama": LLAMA_HPARAMS,
     "qwen": QWEN_HPARAMS,
+    "pythia": PYTHIA_HPARAMS,
+    "smollm": SMOLLM_HPARAMS,
+    "gemma": GEMMA_HPARAMS,
 }
 
 _FAMILY_DEFAULT_MODEL: dict[Family, str] = {
     "gpt2": GPT2_DEFAULT_MODEL,
     "llama": LLAMA_DEFAULT_MODEL,
     "qwen": QWEN_DEFAULT_MODEL,
+    "pythia": PYTHIA_DEFAULT_MODEL,
+    "smollm": SMOLLM_DEFAULT_MODEL,
+    "gemma": GEMMA_DEFAULT_MODEL,
 }
 
 
@@ -144,9 +196,23 @@ def qwen_hparams_for_model(model_name: str) -> Hyperparameters:
     return QWEN_08B_HPARAMS
 
 
+def pythia_hparams_for_model(model_name: str) -> Hyperparameters:
+    """Pick nullspace_k preset from Pythia size (410m vs 1.4b)."""
+    name = model_name.lower()
+    if "1.4" in name or "1b" in name or "1.4b" in name:
+        return PYTHIA_14B_HPARAMS
+    return PYTHIA_410M_HPARAMS
+
+
 def default_config_path(family: Family) -> pathlib.Path:
     if family == "qwen":
         return CONFIG_DIR / "qwen3_0.8b.yaml"
+    if family == "pythia":
+        return CONFIG_DIR / "pythia_410m.yaml"
+    if family == "smollm":
+        return CONFIG_DIR / "smollm2_1.7b.yaml"
+    if family == "gemma":
+        return CONFIG_DIR / "gemma2_2b.yaml"
     return CONFIG_DIR / f"{family}.yaml"
 
 
@@ -160,6 +226,14 @@ MODEL_OUTPUT_SLUGS: dict[str, str] = {
     "Qwen/Qwen3.5-0.8B": "qwen_3.5_0.8B_instruct",
     "Qwen/Qwen3.5-2B-Base": "qwen_3.5_2B_base",
     "Qwen/Qwen3.5-2B": "qwen_3.5_2B_instruct",
+    "EleutherAI/pythia-410m": "pythia_410m",
+    "pythia-410m": "pythia_410m",
+    "EleutherAI/pythia-1.4b": "pythia_1.4b",
+    "pythia-1.4b": "pythia_1.4b",
+    "HuggingFaceTB/SmolLM2-1.7B": "smollm2_1.7B_base",
+    "HuggingFaceTB/SmolLM2-1.7B-Instruct": "smollm2_1.7B_instruct",
+    "google/gemma-2-2b": "gemma2_2b_base",
+    "google/gemma-2-2b-it": "gemma2_2b_instruct",
 }
 
 EXP1_SUBDIR = "exp1"
@@ -178,7 +252,7 @@ def model_output_dir(model_name: str, base: pathlib.Path | None = None) -> pathl
 
 
 def exp1_dir(model_name: str, base: pathlib.Path | None = None) -> pathlib.Path:
-    """Return outputs/<model-slug>/exp1/ (paper reproduction phases 1–3)."""
+    """Return outputs/<model-slug>/exp1/ (paper reproduction phases 1–2)."""
     return model_output_dir(model_name, base) / EXP1_SUBDIR
 
 

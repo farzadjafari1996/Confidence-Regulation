@@ -8,24 +8,35 @@ from typing import Any, Literal
 
 from hyperparameters import (
     DEFAULT_OUTPUT_DIR,
+    GEMMA_DEFAULT_MODEL,
+    GEMMA_HPARAMS,
     GPT2_DEFAULT_MODEL,
     GPT2_HPARAMS,
     LLAMA_DEFAULT_MODEL,
     LLAMA_HPARAMS,
+    PYTHIA_DEFAULT_MODEL,
+    PYTHIA_HPARAMS,
     QWEN_DEFAULT_MODEL,
     QWEN_HPARAMS,
+    SMOLLM_DEFAULT_MODEL,
+    SMOLLM_HPARAMS,
     Hyperparameters,
     ModelRunConfig,
     load_run_settings,
 )
 
-Family = Literal["gpt2", "llama", "qwen"]
+Family = Literal["gpt2", "llama", "qwen", "pythia", "smollm", "gemma"]
 
 _FAMILY_DEFAULTS: dict[Family, tuple[Hyperparameters, str]] = {
     "gpt2": (GPT2_HPARAMS, GPT2_DEFAULT_MODEL),
     "llama": (LLAMA_HPARAMS, LLAMA_DEFAULT_MODEL),
     "qwen": (QWEN_HPARAMS, QWEN_DEFAULT_MODEL),
+    "pythia": (PYTHIA_HPARAMS, PYTHIA_DEFAULT_MODEL),
+    "smollm": (SMOLLM_HPARAMS, SMOLLM_DEFAULT_MODEL),
+    "gemma": (GEMMA_HPARAMS, GEMMA_DEFAULT_MODEL),
 }
+
+_HF_DTYPE_FAMILIES = frozenset({"llama", "qwen", "smollm", "gemma"})
 
 
 def add_config_argument(parser: argparse.ArgumentParser) -> None:
@@ -61,7 +72,7 @@ def add_phase1_cli(parser: argparse.ArgumentParser, family: Family) -> None:
         help="Fixed null-space k; effective k is min(nullspace_top_pct*d_model, k)",
     )
     parser.add_argument("--seed", type=int, default=None)
-    if family in ("llama", "qwen"):
+    if family in _HF_DTYPE_FAMILIES:
         parser.add_argument(
             "--dtype",
             default=None,
@@ -96,14 +107,14 @@ def add_phase2_cli(parser: argparse.ArgumentParser, family: Family) -> None:
         default=None,
         help="Fraction of d_model for null-space k (must match phase 1)",
     )
-    if family == "gpt2":
+    if family in ("gpt2", "pythia"):
         parser.add_argument(
             "--nullspace-k",
             type=int,
             default=None,
             help="Must match phase 1 if re-running static metrics",
         )
-    if family in ("llama", "qwen"):
+    if family in _HF_DTYPE_FAMILIES:
         parser.add_argument(
             "--dtype",
             default=None,
@@ -114,28 +125,6 @@ def add_phase2_cli(parser: argparse.ArgumentParser, family: Family) -> None:
         "--plots-only",
         action="store_true",
         help="Regenerate plots from existing ablation.feather",
-    )
-
-
-def add_phase3_cli(parser: argparse.ArgumentParser, family: Family) -> None:
-    add_phase2_cli(parser, family)
-    parser.add_argument(
-        "--branch",
-        choices=("te", "de_ln", "both"),
-        default="te",
-        help="Ablation branch for primary plots: TE (fresh LN), DE_LN (frozen LN), or both",
-    )
-    parser.add_argument(
-        "--softmax-top-k",
-        type=int,
-        default=50,
-        help="Top-k tokens stored for softmax overlay examples",
-    )
-    parser.add_argument(
-        "--n-example-tokens",
-        type=int,
-        default=5,
-        help="Example tokens captured per batch chunk (entropy + random panels)",
     )
 
 
