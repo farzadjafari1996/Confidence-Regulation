@@ -17,7 +17,7 @@ from hyperparameters import (
 
 @dataclass
 class Exp2Config:
-    """Minimal Exp 2 settings (static MLP→MLP ρ analysis)."""
+    """Exp 2 settings (every MLP W_out vs later W_in and vs W_U)."""
 
     model: str = "gpt2-small"
     family: str = "gpt2"

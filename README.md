@@ -7,7 +7,7 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | Experiment | Meaning | Layout |
 |---|---|---|
 | **Exp 1** | Paper reproduction (plots & claims) | `exp1/phase1`, `exp1/phase2` |
-| **Exp 2** | Layer-by-layer null-space evaluation | `exp2/` (no phases) |
+| **Exp 2** | MLP writes vs later W_in / W_U, plus W_in read of U_dark(W_U) | `exp2/` (no phases) |
 | **Exp 3** | Hallucination probes | `exp3/` (pipeline steps, no phases) |
 
 **Exp 1 phases**
@@ -26,7 +26,7 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | `reference_code/` | Upstream reference ([GitHub](https://github.com/bpwu1/confidence-regulation-neurons)) |
 | `src/common/` | Shared utilities (`hyperparameters`, `run_config`, plotting) |
 | `src/experiments/exp1/` | Exp 1 package marker (runners under `src/models/*/exp1/`) |
-| `src/experiments/exp2/` | Exp 2 shared library (weight projection) |
+| `src/experiments/exp2/` | Exp 2 shared library (skip pairs, every layer→W_U, U_dark read/visibility) |
 | `src/experiments/exp3/` | Exp 3 shared library (hallucination probe) |
 | `data/exp3/` | Exp 3 item cache (BIG-bench `qa_wikidata`) |
 | `src/models/gpt2/exp1/phase1_identify.py` | Exp 1 Phase 1 |
@@ -96,7 +96,7 @@ python src/models/gpt2/exp1/phase2_ablation.py --device cuda
 
 Outputs: `outputs/gpt2/exp1/phase1/` → `phase2/`; extensions under `exp2/`, `exp3/`
 
-Exp 2 inter-layer weight projection (static; after optional Exp 1 Phase 1 for W_U sanity):
+Exp 2 (static): each MLP `W_out[ℓ]` vs later `W_in` dark subspaces and vs `W_U`. High ρ = unread; baseline `√(k/d_model)`. Also measures how much each `W_in[ℓ]` **reads** the shared unembedding null space `U_dark(W_U)` (`layer_udark_read.csv`, `read_rho`) and whether top-ρ→`W_U` neurons are unread by later MLP reads (`top_wu_visibility.csv`; high `rho_to_reader_dark` means a later MLP does not read that write). Summaries for every pair; per-neuron CSV for consecutive hops and every layer→`W_U`. Optional Exp 1 Phase 1 for last→`W_U` sanity. Gemma-2 `W_out` is `down_proj` (post-FF RMSNorm is not folded in).
 
 ```powershell
 .\.venv\Scripts\Activate.ps1

@@ -10,7 +10,18 @@ import numpy as np
 import pandas as pd
 import torch
 
-from exp2.metrics import compute_rho, dark_basis, svd_reader_basis
+from exp2.metrics import (
+    all_writer_reader_pairs,
+    compute_rho,
+    dark_basis,
+    expected_rho_isotropic,
+    filter_per_neuron_df,
+    n_all_pairs,
+    pair_metrics_df,
+    ReaderSVD,
+    read_frobenius,
+    svd_reader_basis,
+)
 
 
 def _ok(name: str, passed: bool, detail: str) -> dict[str, Any]:
@@ -66,6 +77,72 @@ def run_unit_checks() -> list[dict[str, Any]]:
             "svd_W_U_basis_shape",
             u.shape[0] == d_model and s_u.ndim == 1,
             f"u={tuple(u.shape)} s={tuple(s_u.shape)}",
+        )
+    )
+
+    for n_layers in (1, 2, 12, 16, 24, 26):
+        got = len(all_writer_reader_pairs(n_layers))
+        want = n_all_pairs(n_layers)
+        formula = n_layers * (n_layers + 1) // 2
+        results.append(
+            _ok(
+                f"pair_count_n{n_layers}",
+                got == want == formula,
+                f"got={got} n(n+1)/2={formula}",
+            )
+        )
+
+    svd = ReaderSVD(basis=basis, singular_values=svals, reader_name="W_in", reader_layer=1)
+    w_out = torch.randn(5, d_model)
+    pair_df = pair_metrics_df(w_out, writer_layer=0, svd=svd, k=k, n_layers=2, d_model=d_model)
+    rho_ok = bool(
+        "rho" in pair_df.columns
+        and "bright" not in pair_df.columns
+        and float(pair_df["rho"].min()) >= 0.0
+        and float(pair_df["rho"].max()) <= 1.0
+    )
+    results.append(
+        _ok(
+            "pair_metrics_rho_in_unit_interval",
+            rho_ok and int(pair_df["hop"].iloc[0]) == 1,
+            f"hop={int(pair_df['hop'].iloc[0])} rho_ok={rho_ok}",
+        )
+    )
+
+    skip = pair_metrics_df(w_out, writer_layer=0, svd=svd, k=k, n_layers=3, d_model=d_model)
+    # reader_layer=1 is consecutive; synthesize a hop-2 row and a W_U row
+    skip2 = skip.copy()
+    skip2["reader_layer"] = 2
+    skip2["reader"] = "mlp2.W_in"
+    skip2["hop"] = 2
+    wu = skip.copy()
+    wu["reader_layer"] = pd.NA
+    wu["reader"] = "W_U"
+    wu["reader_kind"] = "W_U"
+    wu["hop"] = 3
+    mixed = pd.concat([skip, skip2, wu], ignore_index=True)
+    kept = filter_per_neuron_df(mixed)
+    kept_readers = set(kept["reader"].unique())
+    results.append(
+        _ok(
+            "filter_keeps_consecutive_and_wu",
+            kept_readers == {"mlp1.W_in", "W_U"} and "mlp2.W_in" not in kept_readers,
+            f"readers={sorted(kept_readers)}",
+        )
+    )
+
+    torch.manual_seed(1)
+    d_big, k_big = 32, 4
+    u_rand, _ = torch.linalg.qr(torch.randn(d_big, d_big), mode="reduced")
+    u_dark_rand = u_rand[:, -k_big:]
+    w_in_rand = torch.randn(d_big, 64)
+    read_rho = read_frobenius(w_in_rand, u_dark_rand)
+    chance = expected_rho_isotropic(k_big, d_big)
+    results.append(
+        _ok(
+            "read_rho_near_sqrt_k_over_d",
+            abs(read_rho - chance) < 0.08,
+            f"read_rho={read_rho:.4f} chance={chance:.4f}",
         )
     )
     return results

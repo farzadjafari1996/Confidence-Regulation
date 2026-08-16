@@ -29,7 +29,7 @@ hyperparameters:
   write_align_mode: both
   use_log2_entropy: false
 
-# Exp 2 — inter-layer MLP→MLP null-space weight projection (static)
+# Exp 2 — every MLP W_out vs later MLP W_in null spaces and vs W_U (static)
 # SwiGLU reader = stacked [gate|up]. Inherits nullspace knobs from hyperparameters.
 exp2:
   seed: 42
