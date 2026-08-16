@@ -15,7 +15,7 @@ Seminar project for **Trends in AI and LLMs** (HPI): reproducing and extending [
 | Phase | What it does |
 |---|---|
 | `phase1` | Static entropy-neuron identification (ρ ranking) |
-| `phase2` | Mean ablation (TE / DE_LN, ΔH, prediction change) |
+| `phase2` | Mean ablation (TE / DE_LN, ΔH, prediction change; joint.entropy + joint.random) |
 
 ## Layout
 

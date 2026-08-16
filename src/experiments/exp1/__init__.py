@@ -2,7 +2,7 @@
 
 Phases (under outputs/<model>/exp1/):
   phase1 — static identification (ρ ranking)
-  phase2 — mean ablation (TE / DE_LN)
+  phase2 — mean ablation (TE / DE_LN; per-neuron + joint.entropy / joint.random)
 
 Entry points live under src/models/<family>/exp1/.
 """
