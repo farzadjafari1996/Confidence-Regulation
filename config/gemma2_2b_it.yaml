@@ -40,6 +40,8 @@ exp2:
 exp3:
   dataset: qa_wikidata
   use_chat_template: true
+  # Gemma-2 residual stream overflows in fp16; bf16 is the same VRAM.
+  dtype: bfloat16
   seed: 42
   device: cuda
   data_dir: data/exp3

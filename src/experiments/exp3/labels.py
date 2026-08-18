@@ -23,6 +23,13 @@ def build_targets(
 
     if label == "top1":
         return y_top1.copy(), "binary"
+    if label == "option_logprob":
+        y_option = np.asarray(data.get("y_option"), dtype=np.int64)
+        if y_option.size != y_top1.size:
+            raise ValueError("option_logprob requested but y_option is missing from the collection")
+        if np.all(y_option < 0):
+            raise ValueError("option_logprob requested but no MCQ items were collected")
+        return (y_option > 0).astype(np.int64), "binary"
     if label == "top5":
         return (gold_rank < 5).astype(np.int64), "binary"
     if label == "confident_error":

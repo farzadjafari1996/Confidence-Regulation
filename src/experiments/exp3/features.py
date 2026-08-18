@@ -1,10 +1,10 @@
-"""Feature-subset helpers for Exp3 probes (full / entropy / rest / matched-k)."""
+"""Feature-subset helpers for Exp3 probes (resid / last-MLP / entropy / matched-k)."""
 
 from __future__ import annotations
 
 import pathlib
 import re
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -12,15 +12,28 @@ import pandas as pd
 from exp3.settings import Exp3Config, FeatureSet
 from hyperparameters import phase_output_dir
 
+FeatureSource = Literal["mlp_last", "resid"]
+
 _TOPK_RE = re.compile(r"^topk_(\d+)$")
 _BOTTOM_RE = re.compile(r"^bottom_k(\d+)$")
 _RANDOM_RE = re.compile(r"^random_k(\d+)_d(\d+)$")
+_RANDOM_RESID_RE = re.compile(r"^random_resid_k(\d+)_d(\d+)$")
+
+MLP_ONLY_FEATURES = frozenset({"all", "mlp_last", "entropy", "rest"})
 
 
 def probe_dir_name(probe: str, features: FeatureSet) -> str:
-    if features == "all":
+    if features in {"all", "mlp_last"}:
         return probe
     return f"{probe}_{features}"
+
+
+def mlp_probe_allowed(features: FeatureSet) -> bool:
+    if features in MLP_ONLY_FEATURES:
+        return True
+    if parse_matched_k_features(str(features)) is not None:
+        return True
+    return False
 
 
 def load_rho_table(phase1_dir: pathlib.Path) -> pd.DataFrame:
@@ -38,14 +51,14 @@ def load_rho_table(phase1_dir: pathlib.Path) -> pd.DataFrame:
     return out.sort_values("rho", ascending=False).reset_index(drop=True)
 
 
-def _validate_indices(idx: np.ndarray, *, d_mlp: int, label: str) -> np.ndarray:
+def _validate_indices(idx: np.ndarray, *, dim: int, label: str) -> np.ndarray:
     idx = np.asarray(idx, dtype=np.int64)
     if idx.size == 0:
         raise ValueError(f"{label}: empty feature index set")
     if np.unique(idx).size != idx.size:
         raise ValueError(f"{label}: duplicate indices")
-    if idx.min() < 0 or idx.max() >= d_mlp:
-        raise ValueError(f"{label}: indices out of range for d_mlp={d_mlp}")
+    if idx.min() < 0 or idx.max() >= dim:
+        raise ValueError(f"{label}: indices out of range for dim={dim}")
     return idx
 
 
@@ -55,7 +68,7 @@ def select_topk_by_rho(rho_df: pd.DataFrame, k: int, *, d_mlp: int) -> np.ndarra
     if k > len(rho_df):
         raise ValueError(f"k={k} exceeds n_neurons={len(rho_df)}")
     idx = rho_df.nlargest(k, "rho")["neuron_index"].to_numpy(dtype=np.int64)
-    return _validate_indices(idx, d_mlp=d_mlp, label=f"topk_{k}")
+    return _validate_indices(idx, dim=d_mlp, label=f"topk_{k}")
 
 
 def select_bottom_by_rho(rho_df: pd.DataFrame, k: int, *, d_mlp: int) -> np.ndarray:
@@ -64,7 +77,7 @@ def select_bottom_by_rho(rho_df: pd.DataFrame, k: int, *, d_mlp: int) -> np.ndar
     if k > len(rho_df):
         raise ValueError(f"k={k} exceeds n_neurons={len(rho_df)}")
     idx = rho_df.nsmallest(k, "rho")["neuron_index"].to_numpy(dtype=np.int64)
-    return _validate_indices(idx, d_mlp=d_mlp, label=f"bottom_k{k}")
+    return _validate_indices(idx, dim=d_mlp, label=f"bottom_k{k}")
 
 
 def select_random_non_entropy(
@@ -85,11 +98,11 @@ def select_random_non_entropy(
         raise ValueError(f"k={k} exceeds non-entropy pool size={pool.size}")
     rng = np.random.RandomState(seed)
     idx = rng.choice(pool, size=k, replace=False)
-    return _validate_indices(np.sort(idx), d_mlp=d_mlp, label=f"random_k{k}")
+    return _validate_indices(np.sort(idx), dim=d_mlp, label=f"random_k{k}")
 
 
 def parse_matched_k_features(features: str) -> dict[str, Any] | None:
-    """Parse matched-k feature tags; return None if not a matched-k tag."""
+    """Parse last-MLP matched-k tags; return None if not a last-MLP matched-k tag."""
     m = _TOPK_RE.match(features)
     if m:
         return {"kind": "topk", "k": int(m.group(1))}
@@ -107,17 +120,56 @@ def resolve_feature_indices(
     features: FeatureSet,
     *,
     d_mlp: int,
+    n_resid: int | None = None,
     phase1_dir: pathlib.Path | None = None,
     device: str | None = None,
     skip_phase1: bool = False,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """Return column indices into X_full and metadata for the requested feature set."""
-    if features == "all":
+    """Return column indices and metadata. `source` is mlp_last or resid."""
+    if features in {"all", "mlp_last"}:
         idx = np.arange(d_mlp, dtype=np.int64)
         return idx, {
-            "feature_set": "all",
+            "feature_set": features,
+            "source": "mlp_last",
             "n_features": int(d_mlp),
             "d_mlp": int(d_mlp),
+            "entropy_indices": None,
+            "entropy_neurons": None,
+            "writer_layer": None,
+            "phase1_dir": None,
+        }
+
+    if features == "resid_all":
+        if n_resid is None:
+            raise ValueError("resid_all requires n_resid")
+        idx = np.arange(n_resid, dtype=np.int64)
+        return idx, {
+            "feature_set": "resid_all",
+            "source": "resid",
+            "n_features": int(n_resid),
+            "d_mlp": int(d_mlp),
+            "entropy_indices": None,
+            "entropy_neurons": None,
+            "writer_layer": None,
+            "phase1_dir": None,
+        }
+
+    resid_match = _RANDOM_RESID_RE.match(str(features))
+    if resid_match is not None:
+        if n_resid is None:
+            raise ValueError("random_resid requires n_resid")
+        k = int(resid_match.group(1))
+        draw = int(resid_match.group(2))
+        rng = np.random.RandomState(int(cfg.seed) + 20_000 + draw)
+        idx = np.sort(rng.choice(n_resid, size=k, replace=False).astype(np.int64))
+        idx = _validate_indices(idx, dim=n_resid, label=str(features))
+        return idx, {
+            "feature_set": features,
+            "source": "resid",
+            "n_features": int(idx.size),
+            "d_mlp": int(d_mlp),
+            "matched_k": {"kind": "random_resid", "k": k, "draw": draw},
+            "feature_indices": idx.tolist(),
             "entropy_indices": None,
             "entropy_neurons": None,
             "writer_layer": None,
@@ -159,7 +211,6 @@ def resolve_feature_indices(
             idx = select_bottom_by_rho(rho_df, k, d_mlp=d_mlp)
         else:
             draw = int(matched["draw"])
-            # Deterministic per-draw seed; keep draws disjoint from cfg.seed base.
             idx = select_random_non_entropy(
                 d_mlp=d_mlp,
                 entropy_idx=entropy_idx,
@@ -171,6 +222,7 @@ def resolve_feature_indices(
 
     meta: dict[str, Any] = {
         "feature_set": features,
+        "source": "mlp_last",
         "n_features": int(idx.size),
         "d_mlp": int(d_mlp),
         "entropy_indices": entropy_idx.tolist(),
@@ -189,3 +241,33 @@ def resolve_feature_indices(
 
 def select_features(X: np.ndarray, indices: np.ndarray) -> np.ndarray:
     return np.asarray(X[:, indices], dtype=np.float32)
+
+
+def feature_matrix(
+    data: dict[str, Any],
+    cfg: Exp3Config,
+    features: FeatureSet,
+    *,
+    phase1_dir: pathlib.Path | None = None,
+    device: str | None = None,
+    skip_phase1: bool = False,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    """Return (X_subset, indices, meta) for the requested arm."""
+    mlp = np.asarray(data["X_mlp_last"], dtype=np.float32)
+    resid_shape = np.asarray(data["X_resid"]).shape
+    n_resid = int(np.prod(resid_shape[1:]))
+    idx, meta = resolve_feature_indices(
+        cfg,
+        features,
+        d_mlp=mlp.shape[1],
+        n_resid=n_resid,
+        phase1_dir=phase1_dir,
+        device=device,
+        skip_phase1=skip_phase1,
+    )
+    source = meta.get("source", "mlp_last")
+    if source == "resid":
+        X_src = np.asarray(data["X_resid"], dtype=np.float32).reshape(mlp.shape[0], -1)
+    else:
+        X_src = mlp
+    return select_features(X_src, idx), idx, meta

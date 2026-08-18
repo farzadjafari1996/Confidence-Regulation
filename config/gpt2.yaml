@@ -50,7 +50,7 @@ exp3:
   data_dir: data/exp3
   sample_sizes:
     sanity: 200
-    main: 3000
+    main: 10000
   split_ratios:
     train: 0.70
     val: 0.15

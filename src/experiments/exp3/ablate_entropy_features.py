@@ -1,16 +1,30 @@
-"""Step 4: probe dependence on Phase-1 high-ρ entropy-neuron features.
+"""Step 5: probe dependence on Phase-1 high-ρ entropy-neuron features.
 
 Freezes trained Exp3 probes, mean-replaces (and optionally zeros) entropy dims
-in stored X_full, and compares necessity / sufficiency effects to matched
-random-neuron controls. Optionally auto-runs Phase 1 if selection artifacts
-are missing.
+in stored last-MLP activations, and compares necessity / sufficiency effects
+to matched random-neuron controls. Optionally auto-runs Phase 1 if selection
+artifacts are missing.
+
+Usage (from repo root, venv active). Omitting --dataset runs both cloze sets:
+  python src/experiments/exp3/ablate_entropy_features.py --config config/llama_instruct.yaml --split main --device cuda
 """
 
 from __future__ import annotations
 
 import json
 import pathlib
+import sys
 from typing import Any, Callable, Literal
+
+_src = pathlib.Path(__file__).resolve().parent
+while _src != _src.parent and not (
+    (_src / "common").is_dir() and (_src / "experiments").is_dir() and (_src / "models").is_dir()
+):
+    _src = _src.parent
+for _p in (_src, _src / "common", _src / "experiments", _src / "models"):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
 
 import joblib
 import matplotlib.pyplot as plt
@@ -18,7 +32,7 @@ import numpy as np
 import torch
 from scipy.stats import pearsonr, percentileofscore, spearmanr
 
-from exp3.dataset_io import dataset_path, ensure_splits, load_arrays
+from exp3.dataset_io import collection_ready, ensure_splits, load_arrays
 from exp3.evaluate import _load_logistic_predictor, _load_mlp_predictor
 from exp3.labels import build_targets
 from exp3.metrics import classification_metrics, regression_metrics
@@ -391,13 +405,14 @@ def run_entropy_feature_ablation(
     skip_phase1: bool = False,
     device: str | None = None,
 ) -> pathlib.Path:
-    label = label or cfg.label_default
+    label = cfg.resolved_label(label)
     device = device or cfg.device
     out_dir = cfg.probe_out_dir(split_name, probe)
     data_dir = cfg.data_out_dir(split_name)
-    data_path = dataset_path(data_dir)
-    if not data_path.exists():
-        raise FileNotFoundError(f"Missing dataset {data_path}. Run exp3/collect.py first.")
+    if not collection_ready(data_dir):
+        raise FileNotFoundError(
+            f"Missing {data_dir}. Run exp3/gather_activations.py first."
+        )
 
     resolved_phase1 = pathlib.Path(phase1_dir) if phase1_dir is not None else phase_output_dir(
         cfg.model, "phase1", cfg.out_dir
@@ -406,7 +421,7 @@ def run_entropy_feature_ablation(
         cfg, resolved_phase1, device=device, skip_phase1=skip_phase1
     )
 
-    data = load_arrays(data_path)
+    data = load_arrays(data_dir)
     splits = ensure_splits(cfg, split_name, data)
     y, task = build_targets(
         data,
@@ -432,7 +447,9 @@ def run_entropy_feature_ablation(
     if probe == "logistic":
         model_path = out_dir / "best_model.joblib"
         if not model_path.exists():
-            raise FileNotFoundError(f"Missing {model_path}. Run exp3/train_logistic.py first.")
+            raise FileNotFoundError(
+                f"Missing {model_path}. Run exp3/train_arms.py first."
+            )
         bundle = joblib.load(model_path)
         if bundle.get("label") != label:
             print(
@@ -442,7 +459,9 @@ def run_entropy_feature_ablation(
     else:
         model_path = out_dir / "best_model.pt"
         if not model_path.exists():
-            raise FileNotFoundError(f"Missing {model_path}. Run exp3/train_mlp.py first.")
+            raise FileNotFoundError(
+                f"Missing {model_path}. Run exp3/train_arms.py first."
+            )
         ckpt = torch.load(model_path, map_location="cpu", weights_only=False)
         if ckpt.get("label") != label:
             print(f"Warning: trained label={ckpt.get('label')} but evaluating with label={label}")
@@ -618,3 +637,58 @@ def run_entropy_feature_ablation(
     print(f"Entropy feature ablation -> {json_path}")
     print(f"  CSV -> {csv_path}")
     return json_path
+
+
+def parse_args():
+    import argparse
+
+    from exp3.cli import add_step_args
+    from exp3.settings import LABELS
+
+    p = argparse.ArgumentParser(description="Exp 3 step 5: entropy-feature ablation")
+    add_step_args(p)
+    p.add_argument(
+        "--probe",
+        choices=["logistic", "mlp", "both"],
+        default="logistic",
+        help="Frozen probe(s) to ablate (default: last-MLP logistic)",
+    )
+    p.add_argument("--label", choices=LABELS, default=None)
+    p.add_argument("--mode", choices=["mean", "zero", "both"], default="both")
+    p.add_argument("--n-controls", type=int, default=None)
+    p.add_argument("--phase1-dir", type=pathlib.Path, default=None)
+    p.add_argument("--skip-phase1", action="store_true")
+    return p.parse_args()
+
+
+def main() -> None:
+    from exp3.cli import iter_cfgs, resolve_device
+
+    args = parse_args()
+    probes: list[ProbeName]
+    if args.probe == "both":
+        probes = ["logistic", "mlp"]
+    else:
+        probes = [args.probe]
+    for dataset, cfg in iter_cfgs(args):
+        device = resolve_device(args.device or cfg.device)
+        print(f"\n=== ablate  {dataset}  {args.split}  n={cfg.sample_size(args.split)} ===")
+        kwargs: dict[str, Any] = {}
+        if args.n_controls is not None:
+            kwargs["n_controls"] = args.n_controls
+        for probe in probes:
+            run_entropy_feature_ablation(
+                cfg,
+                args.split,
+                probe,
+                label=args.label,
+                mode=args.mode,
+                phase1_dir=args.phase1_dir,
+                skip_phase1=args.skip_phase1,
+                device=device,
+                **kwargs,
+            )
+
+
+if __name__ == "__main__":
+    main()
